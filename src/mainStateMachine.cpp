@@ -1,7 +1,5 @@
 #include "mbed.h"
 
-//this is a test 
-
 // pes board pin map
 #include "PESBoardPinMap.h"
 
@@ -34,6 +32,7 @@ int main(){
         REPOSITIONING,
         PICKING,
         PLACING,
+        FINISH,
         SLEEP,
         EMERGENCY
     } robot_state = RobotState::INITIAL;
@@ -237,6 +236,11 @@ int main(){
                 case RobotState::PLACING: {
 
                     robot_state = RobotState::DRIVING;
+                    break;
+                }
+                case RobotState::FINISH: {
+                    printf("FINISH\n");
+
                     break;
                 }
                 case RobotState::SLEEP: {
