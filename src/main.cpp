@@ -1,5 +1,3 @@
-//colorsensor test
-
 #include "mbed.h"
 
 // pes board pin map
@@ -7,8 +5,9 @@
 
 // drivers
 #include "DebounceIn.h"
-#include "ColorSensor.h"
-#include "Servo.h"
+#include "DCMotor.h"
+#include "FastPWM.h"
+// #include "LineFollower.h" // Commented out for straight drive
 
 bool do_execute_main_task = false; // this variable will be toggled via the user button (blue button) and
                                    // decides whether to execute the main task or not
@@ -21,8 +20,8 @@ void toggle_do_execute_main_fcn(); // custom function which is getting executed 
                                    // button gets pressed, definition at the end
 
 // main runs as an own thread
-int main(){
-
+int main()
+{
     // attach button fall function address to user button object
     user_button.fall(&toggle_do_execute_main_fcn);
 
@@ -36,33 +35,28 @@ int main(){
     // led on nucleo board
     DigitalOut user_led(LED1);
 
-    // additional led
-    // create DigitalOut object to command extra led, you need to add an additional resistor, e.g. 220...500 Ohm
-    // a led has an anode (+) and a cathode (-), the cathode needs to be connected to ground via the resistor
-    DigitalOut led1(PB_9);
-
     // --- adding variables and objects and applying functions starts here ---
 
-    // mechanical button
-    DigitalIn mechanical_button(PC_5);  // create DigitalIn object to evaluate mechanical button, you
-                                        // need to specify the mode for proper usage, see below
-    mechanical_button.mode(PullUp);     // sets pullup between pin and 3.3 V, so that there
-                                        // is a defined potential
+    // 1. Motor setup
+    // create object to enable power electronics for the dc motors
+    DigitalOut enable_motors(PB_ENABLE_DCMOTORS);
 
-    // color sensor
-    float color_raw_Hz[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // define an array to store the measurement of the color sensor (in Hz)
-    float color_avg_Hz[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // define an array to store the average measurement of the color sensor (in Hz)
-    float color_cal[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // define an array to store the calibrated measurement of the color sensor
-    
-    int color_num = 0.0f; // define a variable to store the color number, e.g. 0 for red, 1 for green, 2 for blue, 3 for clear
-    const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
-    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_3
+    const float voltage_max = 12.0f; // maximum voltage of battery packs (12V)
+    const float gear_ratio  = 78.125f; // gear ratio 78.125:1
+    const float kn          = 180.0f / 12.0f; // motor speed constant [rpm/V]
 
-    // servo
-    float servo_input = 0.0f;
-    float servo_D0_ang_min = 0.025f; // 0.5 ms
-    float servo_D0_ang_max = 0.125f; // 2.5 ms
-    Servo servo_D0(PB_D0, servo_D0_ang_min, servo_D0_ang_max);
+    // motor M1 (right) and M2 (left)
+    FastPWM motor_M1(PB_PWM_M1);
+    FastPWM motor_M2(PB_PWM_M2);
+
+    // 2. Line Follower setup (Commented out for straight drive)
+    /*
+    const float d_wheel  = 0.0372f; // wheel diameter in meters
+    const float b_wheel  = 0.1560f; // wheelbase in meters
+    const float bar_dist = 0.1140f; // distance from wheel axis to sensor bar in meters
+    const float max_vel_rps = motor_M1.getMaxPhysicalVelocity(); // max speed in rotations per second
+    LineFollower line_follower(PB_9, PB_8, bar_dist, d_wheel, b_wheel, max_vel_rps);
+    */
 
     // start timer
     main_task_timer.start();
@@ -71,108 +65,40 @@ int main(){
     while (true) {
         main_task_timer.reset();
 
-        // --- code that runs every cycle at the start goes here ---
-
         if (do_execute_main_task) {
+            // Enable motors
+            enable_motors = 1;
 
-            // --- code that runs when the blue button was pressed goes here ---
+            // --- STRAIGHT DRIVE ---
+            // Set a fixed speed for both motors in rotations per second (rps)
+            // 0.4f is a slow, controlled speed to start with
+            float speed_rps = 0.4f; 
 
-            // enable the servos
-            if (!servo_D0.isEnabled())
-                servo_D0.enable(servo_input);
+            motor_M1.write(0.25f); // apply -6V to the motor
+            motor_M2.write(0.25f); // apply -6V to the motor
 
-            // visual feedback that the main task is executed, setting this once would actually be enough
-            led1 = 1;
-
-            if(mechanical_button.read()){
-                // read the raw color measurement (in Hz) and store it in the defined variable
-                for (int i = 0; i < 4; i++) {
-                    color_raw_Hz[i] = Color_Sensor.readRawColor()[i]; // read the raw color measurement in Hz
-                }
-                
-                // read the average color measurement (in Hz) and store it in the defined variable
-                for (int i = 0; i < 4; i++) {
-                    color_avg_Hz[i] = Color_Sensor.readColor()[i]; // read the average color measurement in Hz
-                }
-
-                // read the calibrated color measurement (unitless) and store it in the defined variable
-                for (int i = 0; i < 4; i++) {
-                    color_cal[i] = Color_Sensor.readColorCalib()[i];
-                }
-
-                // read the classified color number and store it in the defined variable
-                color_num = Color_Sensor.getColor();
-
-                // read the classified color string and store it in the defined variable
-                color_string = Color_Sensor.getColorString(color_num);
-            }
-
-
-            // select servo target position
-            switch (color_num) {
-                case 3: // RED
-                    servo_input = 0.25f;
-                    break;
-                case 5: // GREEN
-                    servo_input = 0.5f;
-                    break;
-                case 7: // BLUE
-                    servo_input = 0.75f;
-                    break;
-                case 4: // YELLOW
-                    servo_input = 1.0f;
-                    break;
-                case 1: case 2: // BLACK, WHITE
-                    servo_input = 0.0f;
-                    break;
-                default:
-                    // servo_input = 0.0f;
-                    break;
-            }
-            // command the servo
-            servo_D0.setPulseWidth(servo_input);
-
-            // printf("Color Raw Hz: %f %f %f %f\n", color_raw_Hz[0], color_raw_Hz[1], color_raw_Hz[2], color_raw_Hz[3]); // uncomment to print raw color measurement in Hz      
-            // printf("Color Avg Hz: %f %f %f %f\n", color_avg_Hz[0], color_avg_Hz[1], color_avg_Hz[2], color_avg_Hz[3]); // uncomment to print average color measurement in Hz (used for calibration and color classification)
-            // printf("Color Num: %d Color %s\n", color_num, color_string); // uncomment to print classified color number and string. careful: filters delay also delays the color classification,
-                                                                         // so the first few readings after switching the color sensor might be wrong until the filters are settled           
+            /*
+            motor_M1.setVelocity(speed_rps);
+            motor_M2.setVelocity(speed_rps);
+            */
         } else {
             // the following code block gets executed only once
             if (do_reset_all_once) {
                 do_reset_all_once = false;
 
-                // --- variables and objects that should be reset go here ---
+                // Stop and disable motors
+                enable_motors = 0;
 
-                // reset variables and objects
-                led1 = 0;
+                /*
+                motor_M1.setVelocity(0.0f);
+                motor_M2.setVelocity(0.0f);
+                */
 
-                for (int i = 0; i < 4; i++) {
-                    color_raw_Hz[i] = 0.0f;
-                    color_avg_Hz[i] = 0.0f;
-                    color_cal[i] = 0.0f;
-                }
-                color_num = 0;
-                color_string = nullptr;
-                servo_D0.disable();
-                // servo_input = 0.0f;
             }
         }
 
-        // toggling the user led
+        // toggling the user led for heartbeat
         user_led = !user_led;
-
-        // --- code that runs every cycle at the end goes here ---
-
-        // print to the serial terminal
-        // print Main Task state
-                printf("MT: %d, ", do_execute_main_task);
-            // print mechanical button state
-                printf("btn: %d, ", mechanical_button.read());
-            // print color
-                printf("clr: %s, ", color_string);
-            // print servo position
-                printf("svo: %f\n", servo_input);
-        
 
         // read timer and make the main thread sleep for the remaining time span (non blocking)
         int main_task_elapsed_time_ms = duration_cast<milliseconds>(main_task_timer.elapsed_time()).count();
@@ -191,3 +117,4 @@ void toggle_do_execute_main_fcn()
     if (do_execute_main_task)
         do_reset_all_once = true;
 }
+ 
