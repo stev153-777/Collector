@@ -5,9 +5,10 @@
 
 // drivers
 #include "DebounceIn.h"
-#include "DCMotor.h"
 #include "FastPWM.h"
-// #include "LineFollower.h" // Commented out for straight drive
+#include "DCMotor.h"
+#include "ColorSensor.h"
+#include <cstring>
 
 bool do_execute_main_task = false; // this variable will be toggled via the user button (blue button) and
                                    // decides whether to execute the main task or not
@@ -20,8 +21,8 @@ void toggle_do_execute_main_fcn(); // custom function which is getting executed 
                                    // button gets pressed, definition at the end
 
 // main runs as an own thread
-int main()
-{
+int main(){
+
     // attach button fall function address to user button object
     user_button.fall(&toggle_do_execute_main_fcn);
 
@@ -35,28 +36,58 @@ int main()
     // led on nucleo board
     DigitalOut user_led(LED1);
 
+    // additional led
+    // create DigitalOut object to command extra led, you need to add an additional resistor, e.g. 220...500 Ohm
+    // a led has an anode (+) and a cathode (-), the cathode needs to be connected to ground via the resistor
+    DigitalOut led1(PB_9);
+
     // --- adding variables and objects and applying functions starts here ---
 
-    // 1. Motor setup
+    // mechanical button (reference magazine)
+    DigitalIn mechanical_button(PC_5);  // create DigitalIn object to evaluate mechanical button, you
+                                        // need to specify the mode for proper usage, see below
+    mechanical_button.mode(PullUp);     // sets pullup between pin and 3.3 V, so that there
+                                        // is a defined potential
+
+    // line follower
+    int stopDetected = 0;
+
+    // Pick or Place
+    bool picking = false;
+    bool placing = false;
+
+    // color sensor
+    bool rePosNeeded = false;
+    bool color_valid = false;
+    int color_num = 0; // define a variable to store the color number, e.g. 0 for red, 1 for green, 2 for blue, 3 for clear
+    const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
+    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_3
+    int color_retry_counter = 0;
+    const int color_retry_delay_cycles = 5; // ~100 ms (5 * 20ms)
+
+    // DC Motor Magazine
+    const float voltage_max = 12.0f; // maximum voltage of battery packs, adjust this to
+                                     // 6.0f V if you only use one battery pack
+    const float gear_ratio_M3 = 390.625f; // gear ratio
+    const float kn_M3 = 36.0f / 12.0f;  // motor constant [rpm/V]
+    // it is assumed that only one motor is available, therefore
+    // we use the pins from M1, so you can leave it connected to M1
+    DCMotor magazine_motor(PB_PWM_M3, PB_ENC_A_M3, PB_ENC_B_M3, gear_ratio_M3, kn_M3, voltage_max);
+    // enable the motion planner for smooth movement
+    magazine_motor.enableMotionPlanner();
+    // limit max. velocity to half physical possible velocity
+    // magazine_motor.setMaxVelocity(magazine_motor.getMaxPhysicalVelocity() * 0.5f);
+    float target_rotation   = 0.0f;
+    float rotation_red      = 1.0f;
+    float rotation_green    = 2.0f;
+    float rotation_blue     = 3.0f;
+    float rotation_yellow   = 4.0f;
+    float positionTolerance = 0.01f;
+    bool drive = false;
+    bool referenced = false;
+
     // create object to enable power electronics for the dc motors
     DigitalOut enable_motors(PB_ENABLE_DCMOTORS);
-
-    const float voltage_max = 12.0f; // maximum voltage of battery packs (12V)
-    const float gear_ratio  = 78.125f; // gear ratio 78.125:1
-    const float kn          = 180.0f / 12.0f; // motor speed constant [rpm/V]
-
-    // motor M1 (right) and M2 (left)
-    FastPWM motor_M1(PB_PWM_M1);
-    FastPWM motor_M2(PB_PWM_M2);
-
-    // 2. Line Follower setup (Commented out for straight drive)
-    /*
-    const float d_wheel  = 0.0372f; // wheel diameter in meters
-    const float b_wheel  = 0.1560f; // wheelbase in meters
-    const float bar_dist = 0.1140f; // distance from wheel axis to sensor bar in meters
-    const float max_vel_rps = motor_M1.getMaxPhysicalVelocity(); // max speed in rotations per second
-    LineFollower line_follower(PB_9, PB_8, bar_dist, d_wheel, b_wheel, max_vel_rps);
-    */
 
     // start timer
     main_task_timer.start();
@@ -65,40 +96,63 @@ int main()
     while (true) {
         main_task_timer.reset();
 
+        // --- code that runs every cycle at the start goes here ---
+        printf("MT: %d", do_execute_main_task);
+        printf(" Button: %d", mechanical_button.read());
+        printf(" Drive: %d", drive);
+        printf(" motors: %d", enable_motors.read());
+        printf(" Motor Position: %f.\n", magazine_motor.getRotation());
+
         if (do_execute_main_task) {
-            // Enable motors
-            enable_motors = 1;
 
-            // --- STRAIGHT DRIVE ---
-            // Set a fixed speed for both motors in rotations per second (rps)
-            // 0.4f is a slow, controlled speed to start with
-            float speed_rps = 0.4f; 
+            // --- code that runs when the blue button was pressed goes here ---
+    
+            // enable hardwaredriver dc motors: 0 -> disabled, 1 -> enabled
+            // if (enable_motors == 0) enable_motors = 1;
+            
+            // while magazine is not referenced, drive backwards
+            while (referenced == false) {
+                if (!enable_motors) enable_motors=1;
+                printf("referencing position: %f\n", magazine_motor.getRotation());
+                if (!mechanical_button.read()){
+                magazine_motor.setVelocity((-magazine_motor.getMaxVelocity()) * 0.5f);
+                }
+                else {
+                    magazine_motor.setVelocity(0.0f);
+                    enable_motors = 0;
+                    //enable_motors = 1;
+                    referenced = true;
+                    drive = false;
+                    // reset to 0.0f}
+                }
+            }
 
-            motor_M1.write(0.25f); // apply -6V to the motor
-            motor_M2.write(0.25f); // apply -6V to the motor
+            if (!mechanical_button.read()) enable_motors=1;
 
-            /*
-            motor_M1.setVelocity(speed_rps);
-            motor_M2.setVelocity(speed_rps);
-            */
+            if (drive){
+                drive = false;
+                magazine_motor.setRotationRelative(2.0f);
+            }
+                        
+            // visual feedback that the main task is executed, setting this once would actually be enough
+            led1 = 1;
         } else {
             // the following code block gets executed only once
             if (do_reset_all_once) {
                 do_reset_all_once = false;
 
-                // Stop and disable motors
+                // reset variables and objects
+                led1 = 0;
                 enable_motors = 0;
-
-                /*
-                motor_M1.setVelocity(0.0f);
-                motor_M2.setVelocity(0.0f);
-                */
-
+                drive = false;
+                referenced = false;
             }
         }
 
-        // toggling the user led for heartbeat
+        // toggling the user led
         user_led = !user_led;
+
+        // --- code that runs every cycle at the end goes here ---
 
         // read timer and make the main thread sleep for the remaining time span (non blocking)
         int main_task_elapsed_time_ms = duration_cast<milliseconds>(main_task_timer.elapsed_time()).count();
@@ -117,4 +171,3 @@ void toggle_do_execute_main_fcn()
     if (do_execute_main_task)
         do_reset_all_once = true;
 }
- 

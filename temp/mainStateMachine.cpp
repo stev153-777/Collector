@@ -127,6 +127,8 @@ int main(){
                         magazine_motor.setVelocity((-magazine_motor.getMaxVelocity()) * 0.5f);
                     } else {
                         magazine_motor.setVelocity(0.0f);
+                        enable_motors = 0;
+                        enable_motors = 1;
                         // reset to 0.0f
                         robot_state = RobotState::DRIVING;
                     }
