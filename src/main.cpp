@@ -1,3 +1,5 @@
+// This program is to test the referencing and positioning of the magazine
+
 #include "mbed.h"
 
 // pes board pin map
@@ -9,6 +11,8 @@
 #include "DCMotor.h"
 #include "ColorSensor.h"
 #include <cstring>
+
+bool print = true;
 
 bool do_execute_main_task = false; // this variable will be toggled via the user button (blue button) and
                                    // decides whether to execute the main task or not
@@ -49,6 +53,10 @@ int main(){
     mechanical_button.mode(PullUp);     // sets pullup between pin and 3.3 V, so that there
                                         // is a defined potential
 
+    // mechanical button (start positioning)
+    DigitalIn start_positioning(PB_1);
+    start_positioning.mode(PullUp);
+
     // line follower
     int stopDetected = 0;
 
@@ -77,14 +85,18 @@ int main(){
     magazine_motor.enableMotionPlanner();
     // limit max. velocity to half physical possible velocity
     // magazine_motor.setMaxVelocity(magazine_motor.getMaxPhysicalVelocity() * 0.5f);
+    float reference_zero    = 0.0f;
     float target_rotation   = 0.0f;
-    float rotation_red      = 1.0f;
-    float rotation_green    = 2.0f;
-    float rotation_blue     = 3.0f;
-    float rotation_yellow   = 4.0f;
+    float rotation_red      = 0.25f;
+    float rotation_green    = 0.5f;
+    float rotation_blue     = 0.75f;
+    float rotation_yellow   = 1.0f;
     float positionTolerance = 0.01f;
+    float grip_offset       = 0.25f;
+    float target_position_absolute = 0.0f;
     bool drive = false;
     bool referenced = false;
+    bool moving = false;
 
     // create object to enable power electronics for the dc motors
     DigitalOut enable_motors(PB_ENABLE_DCMOTORS);
@@ -96,12 +108,15 @@ int main(){
     while (true) {
         main_task_timer.reset();
 
-        // --- code that runs every cycle at the start goes here ---
-        printf("MT: %d", do_execute_main_task);
-        printf(" Button: %d", mechanical_button.read());
-        printf(" Drive: %d", drive);
-        printf(" motors: %d", enable_motors.read());
-        printf(" Motor Position: %f.\n", magazine_motor.getRotation());
+        if(print){
+            // --- code that runs every cycle at the start goes here ---
+            printf("MT: %d", do_execute_main_task);
+            printf(" Ref. But.: %d", mechanical_button.read());
+            printf(" Drive: %d", drive);
+            printf(" Pos. But. %d", !start_positioning.read());
+            printf(" motors: %d", enable_motors.read());
+            printf(" Motor Position: %f.\n", magazine_motor.getRotation());
+        }
 
         if (do_execute_main_task) {
 
@@ -115,24 +130,75 @@ int main(){
                 if (!enable_motors) enable_motors=1;
                 printf("referencing position: %f\n", magazine_motor.getRotation());
                 if (!mechanical_button.read()){
-                magazine_motor.setVelocity((-magazine_motor.getMaxVelocity()) * 0.5f);
+                magazine_motor.setVelocity((magazine_motor.getMaxVelocity()) * 0.5f);
                 }
                 else {
                     magazine_motor.setVelocity(0.0f);
-                    enable_motors = 0;
-                    //enable_motors = 1;
+                    reference_zero = magazine_motor.getRotation();
                     referenced = true;
                     drive = false;
-                    // reset to 0.0f}
                 }
             }
 
+            if(!start_positioning.read()){
+
+                // read the classified color number and store it in the defined variable
+                color_num = Color_Sensor.getColor();
+
+                // read the classified color string and store it in the defined variable
+                color_string = Color_Sensor.getColorString(color_num);
+
+                // select magazine target position
+                switch (color_num) {
+                    case 3: // RED
+                        target_rotation = rotation_red;
+                        drive = true;
+                        break;
+                    case 5: // GREEN
+                        target_rotation = rotation_green;
+                        drive = true;
+                        break;
+                    case 7: // BLUE
+                        target_rotation = rotation_blue;
+                        drive = true;
+                        break;
+                    case 4: // YELLOW
+                        target_rotation = rotation_yellow;
+                        drive = true;
+                        break;
+                    case 1: case 2: // BLACK, WHITE
+                        printf("Useless\n");
+                        break;
+                    default:
+                        
+                        break;
+                }
+            }
+
+            if (drive){
+                target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                magazine_motor.setRotationRelative(target_rotation);
+                drive = false;
+                moving = true;
+            }
+
+
+            if ((fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)&&moving){
+                printf("Finished Positioning\n");
+                moving = false;
+                print = false;
+            } else if (moving) {
+                printf("Positioning\n");
+            }
+
+            /*
             if (!mechanical_button.read()) enable_motors=1;
 
             if (drive){
                 drive = false;
                 magazine_motor.setRotationRelative(2.0f);
             }
+            */
                         
             // visual feedback that the main task is executed, setting this once would actually be enough
             led1 = 1;
@@ -146,6 +212,7 @@ int main(){
                 enable_motors = 0;
                 drive = false;
                 referenced = false;
+                moving = false;
             }
         }
 
