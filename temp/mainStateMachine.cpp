@@ -91,12 +91,19 @@ int main(){
     magazine_motor.enableMotionPlanner();
     // limit max. velocity to half physical possible velocity
     magazine_motor.setMaxVelocity(magazine_motor.getMaxPhysicalVelocity() * 0.5f);
+    float target_position_absolute = 0.0f;
+    float reference_zero    = 0.0f;
     float target_rotation   = 0.0f;
-    float rotation_red      = 1.0f;
-    float rotation_green    = 2.0f;
-    float rotation_blue     = 3.0f;
-    float rotation_yellow   = 4.0f;
+    float rotation_red      = 0.25f;
+    float rotation_green    = 0.5f;
+    float rotation_blue     = 0.75f;
+    float rotation_yellow   = 1.0f;
     float positionTolerance = 0.01f;
+    float grip_offset       = 0.25f;
+    bool executePositioning = false;
+    bool referenced         = false;
+    bool moving             = false;
+
 
     // create object to enable power electronics for the dc motors
     DigitalOut enable_motors(PB_ENABLE_DCMOTORS);
@@ -122,13 +129,12 @@ int main(){
                     // enable hardwaredriver dc motors: 0 -> disabled, 1 -> enabled
                     if (enable_motors == 0) enable_motors = 1;
 
-                    // while magazine is not referenced, drive backwards
+                    // while magazine is not referenced, drive forwards until reference button
                     if (mechanical_button.read()) {
-                        magazine_motor.setVelocity((-magazine_motor.getMaxVelocity()) * 0.5f);
+                        magazine_motor.setVelocity((magazine_motor.getMaxVelocity()) * 0.5f);
                     } else {
                         magazine_motor.setVelocity(0.0f);
-                        enable_motors = 0;
-                        enable_motors = 1;
+                        reference_zero = magazine_motor.getRotation();
                         // reset to 0.0f
                         robot_state = RobotState::DRIVING;
                     }
@@ -231,6 +237,20 @@ int main(){
                     break;
                 }
                 case RobotState::PICKING: {
+                    
+                    // motor is positioned at target rotation
+                    // move backwards
+
+                    if (!moving){
+                        moving = true;
+                        target_rotation = -grip_offset;
+                        magazine_motor.setRotationRelative(target_rotation);
+                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                    }
+
+                    if (moving && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance))
+
+
 
                     robot_state = RobotState::DRIVING;
                     break;
