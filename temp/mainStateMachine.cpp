@@ -30,6 +30,10 @@ int main(){
         CHECKING_COLOR,
         WAIT_FOR_MAGAZINE,
         REPOSITIONING,
+        ARM_DOWN,
+        WAIT_ARM_DOWN,
+        ARM_UP,
+        WAIT_ARM_UP,
         PICKING,
         PLACING,
         FINISH,
@@ -103,6 +107,8 @@ int main(){
     bool executePositioning = false;
     bool referenced         = false;
     bool moving             = false;
+    bool armDown            = false;
+    bool armUp              = false;
 
 
     // create object to enable power electronics for the dc motors
@@ -195,6 +201,7 @@ int main(){
                         }
 
                         if(color_valid){
+                            target_position_absolute = magazine_motor.getRotation() + target_rotation;
                             magazine_motor.setRotationRelative(target_rotation);    // drive the motor
                             robot_state = RobotState::WAIT_FOR_MAGAZINE;
                         } else {
@@ -228,35 +235,61 @@ int main(){
 
                     if(picking){
                         placing = false;
-                        robot_state = RobotState::PICKING;
+                        robot_state = RobotState::ARM_DOWN;
                     }
                     else if(placing){
                         picking = false;
-                        robot_state = RobotState::PLACING;
+                        robot_state = RobotState::ARM_DOWN;
                     }
+                    break;
+                }
+                case RobotState::ARM_DOWN:{
+                    if(picking){
+                        target_rotation = -grip_offset;
+                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                        magazine_motor.setRotationRelative(target_rotation);
+                        picking = false;
+                        armDown = true;
+                    }
+
+                    if (armDown && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)){
+                        armDown = false;
+                        target_rotation = grip_offset;
+                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                        magazine_motor.setRotationRelative(target_rotation);
+                        armUp = true;
+                    }
+
+                    if(armUp && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)){
+                        armUp = false;
+                        robot_state = RobotState::DRIVING;
+                    }
+
+                    break;
+                }
+                case RobotState::WAIT_ARM_DOWN:{
+
+                    break;
+                }
+                case RobotState::ARM_UP:{
+
+                    break;
+                }
+                case RobotState::WAIT_ARM_UP:{
+                    
                     break;
                 }
                 case RobotState::PICKING: {
                     
                     // motor is positioned at target rotation
-                    // move backwards
 
-                    if (!moving){
-                        moving = true;
-                        target_rotation = -grip_offset;
-                        magazine_motor.setRotationRelative(target_rotation);
-                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                    }
-
-                    if (moving && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance))
-
-
-
+                    picking = false;
                     robot_state = RobotState::DRIVING;
                     break;
                 }
                 case RobotState::PLACING: {
 
+                    placing = false;
                     robot_state = RobotState::DRIVING;
                     break;
                 }
