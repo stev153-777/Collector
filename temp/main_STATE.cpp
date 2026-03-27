@@ -1,3 +1,5 @@
+// This is the main State Machine Program
+
 #include "mbed.h"
 
 // pes board pin map
@@ -34,6 +36,8 @@ int main(){
         WAIT_ARM_DOWN,
         ARM_UP,
         WAIT_ARM_UP,
+        CHECK_PACKAGE,
+        WAIT_FOR_MAGAZINE,
         FINISH,
         SLEEP,
         EMERGENCY
@@ -64,6 +68,14 @@ int main(){
                                         // need to specify the mode for proper usage, see below
     mechanical_button.mode(PullUp);     // sets pullup between pin and 3.3 V, so that there
                                         // is a defined potential
+
+
+    // mechanical button (skip Drive)
+    DigitalIn skip_drive(PB_1);
+    skip_drive.mode(PullUp);
+    // mechanical button (read color and pick)
+    DigitalIn readcolor(PB_2);
+    readcolor.mode(PullUp);
 
     // line follower
     int stopDetected = 0;
@@ -100,8 +112,10 @@ int main(){
     float rotation_green    = 0.5f;
     float rotation_blue     = 0.75f;
     float rotation_yellow   = 1.0f;
-    float positionTolerance = 0.01f;
+    float positionTolerance = 0.005f;
     float grip_offset       = 0.25f;
+    float color_active      = 0.0f;
+    float curr_pos          = 0.0f;
     bool executePositioning = false;
     bool referenced         = false;
     bool moving             = false;
@@ -128,13 +142,14 @@ int main(){
             // state machine
             switch (robot_state) {
                 case RobotState::INITIAL: {
+                    printf("%f ", magazine_motor.getRotation());
                     printf("INITIAL\n");
                     
                     // enable hardwaredriver dc motors: 0 -> disabled, 1 -> enabled
                     if (enable_motors == 0) enable_motors = 1;
 
                     // while magazine is not referenced, drive forwards until reference button
-                    if (mechanical_button.read()) {
+                    if (!mechanical_button.read()) {
                         magazine_motor.setVelocity((magazine_motor.getMaxVelocity()) * 0.5f);
                     } else {
                         magazine_motor.setVelocity(0.0f);
@@ -148,13 +163,12 @@ int main(){
                     printf("DRIVING\n");
 
                     // Drive
-
-                    if(stopDetected){
+                    if(!skip_drive){
+                    //if(stopDetected){
                         robot_state = RobotState::CHECKING_COLOR;
                     }
                     break;
-                }
-                
+                }   
                 case RobotState::CHECKING_COLOR: {
 
                     stopDetected = 0;
@@ -174,12 +188,12 @@ int main(){
                         // move magazine based on colour and apply repositioning
                         switch (color_num) {
                         case 3: // RED
-                            rePosNeeded = true;
+                            rePosNeeded = false;
                             color_valid = true;
                             target_rotation = rotation_red;
                             break;
                         case 5: // GREEN
-                            rePosNeeded = true;
+                            rePosNeeded = false;
                             color_valid = true;
                             target_rotation = rotation_green;
                             break;
@@ -199,6 +213,8 @@ int main(){
                         }
 
                         if(color_valid){
+                            color_active = target_rotation;
+                            printf("CLR: %f", color_active);
                             target_position_absolute = magazine_motor.getRotation() + target_rotation;
                             magazine_motor.setRotationRelative(target_rotation);    // drive the motor
                             robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;
@@ -209,16 +225,19 @@ int main(){
                     break;
                 }
                 case RobotState::WAIT_FOR_MAGAZINE_INIT: {
+                    printf("%f ", magazine_motor.getRotation());
                     printf("WAIT_FOR_MAGAZINE_INIT\n");
 
                     // wait until target position is reached
-                    if (fabs(magazine_motor.getRotation() - target_rotation) < positionTolerance) {
+                    if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
                         if (rePosNeeded) {
                             robot_state = RobotState::REPOSITIONING;
                         }
+                        /*
                         else {
                             robot_state = RobotState::ARM_DOWN;
                         }
+                        */
                     }
                     break;
                 }
@@ -235,28 +254,27 @@ int main(){
                     break;
                 }
                 case RobotState::ARM_DOWN:{
+                    printf("ARM_DOWN\n");
                     target_rotation = -grip_offset;
                     target_position_absolute = magazine_motor.getRotation() + target_rotation;
                     magazine_motor.setRotationRelative(target_rotation);
                     
                     robot_state = RobotState::WAIT_ARM_DOWN;
 
-                    if(armUp && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)){
-                        armUp = false;
-                        robot_state = RobotState::DRIVING;
-                    }
-
                     break;
                 }
                 case RobotState::WAIT_ARM_DOWN:{
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_ARM_DOWN\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
-                        HAL_Delay(500);
-                        robot_state = RobotState::ARM_UP;
+                        
+                        if(!readcolor) robot_state = RobotState::ARM_UP;
                     }
 
                     break;
                 }
                 case RobotState::ARM_UP:{
+                    printf("ARM_UP\n");
                     target_rotation = grip_offset;
                     target_position_absolute = magazine_motor.getRotation() + target_rotation;
                     magazine_motor.setRotationRelative(target_rotation);
@@ -266,9 +284,32 @@ int main(){
                     break;
                 }
                 case RobotState::WAIT_ARM_UP:{
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_ARM_UP\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
-                        HAL_Delay(500);
-                        robot_state = RobotState::DRIVING;
+
+                        if(!readcolor) robot_state = RobotState::CHECK_PACKAGE;
+                    }
+
+                    break;
+                }
+                case RobotState::CHECK_PACKAGE: {
+                    printf("CHECK_PACKAGE\n");
+                    //if pick place, package yes no
+
+                    target_rotation = (1.0-color_active);
+                    target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                    magazine_motor.setRotationRelative(target_rotation);
+
+                    robot_state = RobotState::WAIT_FOR_MAGAZINE;
+                    break;
+                }
+                case RobotState::WAIT_FOR_MAGAZINE: {
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_FOR_MAGAZINE\n");
+                    if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+
+                        if(!readcolor);robot_state = RobotState::DRIVING;
                     }
 
                     break;
@@ -311,6 +352,7 @@ int main(){
                 picking = false;
                 placing = false;
                 target_rotation = 0.0f;
+                color_active    = 0.0f;
             }
         }
 
