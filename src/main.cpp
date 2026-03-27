@@ -1,4 +1,4 @@
-// This program is to test the referencing and positioning of the magazine
+// This is the main State Machine Program
 
 #include "mbed.h"
 
@@ -11,8 +11,7 @@
 #include "DCMotor.h"
 #include "ColorSensor.h"
 #include <cstring>
-
-bool print = true;
+#include "UltrasonicSensor.h"
 
 bool do_execute_main_task = false; // this variable will be toggled via the user button (blue button) and
                                    // decides whether to execute the main task or not
@@ -26,6 +25,24 @@ void toggle_do_execute_main_fcn(); // custom function which is getting executed 
 
 // main runs as an own thread
 int main(){
+
+    // set up states for state machine
+    enum RobotState {
+        INITIAL,
+        DRIVING,
+        CHECKING_COLOR,
+        WAIT_FOR_MAGAZINE_INIT,
+        REPOSITIONING,
+        ARM_DOWN,
+        WAIT_ARM_DOWN,
+        ARM_UP,
+        WAIT_ARM_UP,
+        CHECK_PACKAGE,
+        WAIT_FOR_MAGAZINE,
+        FINISH,
+        SLEEP,
+        EMERGENCY
+    } robot_state = RobotState::INITIAL;
 
     // attach button fall function address to user button object
     user_button.fall(&toggle_do_execute_main_fcn);
@@ -53,14 +70,25 @@ int main(){
     mechanical_button.mode(PullUp);     // sets pullup between pin and 3.3 V, so that there
                                         // is a defined potential
 
-    // mechanical button (start positioning)
-    DigitalIn start_positioning(PB_1);
-    start_positioning.mode(PullUp);
+
+    // mechanical button (skip Drive)
+    DigitalIn skip_drive(PB_1);
+    skip_drive.mode(PullUp);
+    // mechanical button (read color and pick)
+    DigitalIn readcolor(PB_2);
+    readcolor.mode(PullUp);
 
     // line follower
     int stopDetected = 0;
 
+    // ultrasonic sensor
+    UltrasonicSensor us_sensor(PB_D3);
+    float us_distance_cm = 0.0f;
+    bool success = false;
+
     // Pick or Place
+    int packages_picked = 0;
+    int packages_placed = 0;
     bool picking = false;
     bool placing = false;
 
@@ -85,18 +113,23 @@ int main(){
     magazine_motor.enableMotionPlanner();
     // limit max. velocity to half physical possible velocity
     // magazine_motor.setMaxVelocity(magazine_motor.getMaxPhysicalVelocity() * 0.5f);
-    float reference_zero    = 0.0f;
+    float target_position_absolute = 0.0f;
+    // float reference_zero    = 0.0f;
     float target_rotation   = 0.0f;
     float rotation_red      = 0.25f;
     float rotation_green    = 0.5f;
     float rotation_blue     = 0.75f;
     float rotation_yellow   = 1.0f;
-    float positionTolerance = 0.01f;
+    float positionTolerance = 0.0005f;
     float grip_offset       = 0.25f;
-    float target_position_absolute = 0.0f;
-    bool drive = false;
-    bool referenced = false;
-    bool moving = false;
+    float color_active      = 0.0f;
+    int i                   = 0;
+    // float curr_pos          = 0.0f;
+    // bool executePositioning = false;
+    // bool referenced         = false;
+    // bool moving             = false;
+    // bool armDown            = false;
+    // bool armUp              = false;
 
     // create object to enable power electronics for the dc motors
     DigitalOut enable_motors(PB_ENABLE_DCMOTORS);
@@ -108,98 +141,258 @@ int main(){
     while (true) {
         main_task_timer.reset();
 
-        if(print){
-            // --- code that runs every cycle at the start goes here ---
-            printf("MT: %d", do_execute_main_task);
-            printf(" Ref. But.: %d", mechanical_button.read());
-            printf(" Drive: %d", drive);
-            printf(" Pos. But. %d", !start_positioning.read());
-            printf(" motors: %d", enable_motors.read());
-            printf(" Motor Position: %f.\n", magazine_motor.getRotation());
-        }
+        // --- code that runs every cycle at the start goes here ---
 
         if (do_execute_main_task) {
 
             // --- code that runs when the blue button was pressed goes here ---
-    
-            // enable hardwaredriver dc motors: 0 -> disabled, 1 -> enabled
-            // if (enable_motors == 0) enable_motors = 1;
-            
-            // while magazine is not referenced, drive backwards
-            while (referenced == false) {
-                if (!enable_motors) enable_motors=1;
-                printf("referencing position: %f\n", magazine_motor.getRotation());
-                if (!mechanical_button.read()){
-                magazine_motor.setVelocity((magazine_motor.getMaxVelocity()) * 0.5f);
+            us_distance_cm = us_sensor.read();
+
+            // state machine
+            switch (robot_state) {
+                case RobotState::INITIAL: {
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("INITIAL\n");
+                    
+                    // enable hardwaredriver dc motors: 0 -> disabled, 1 -> enabled
+                    if (enable_motors == 0) enable_motors = 1;
+
+                    // while magazine is not referenced, drive forwards until reference button
+                    if (!mechanical_button.read()) {
+                        magazine_motor.setVelocity((magazine_motor.getMaxVelocity()) * 0.5f);
+                    } else {
+                        magazine_motor.setVelocity(0.0f);
+                        // reference_zero = magazine_motor.getRotation();
+                        // reset to 0.0f
+                        robot_state = RobotState::DRIVING;
+                    }
+                    break;
                 }
-                else {
-                    magazine_motor.setVelocity(0.0f);
-                    reference_zero = magazine_motor.getRotation();
-                    referenced = true;
-                    drive = false;
+                case RobotState::DRIVING: {
+                    printf("DRIVING\n");
+                    // decide if pick or place
+                    // Drive
+                    if(!skip_drive.read()){
+                    //if(stopDetected){
+                        robot_state = RobotState::CHECKING_COLOR;
+                    }
+                    break;
+                }   
+                case RobotState::CHECKING_COLOR: {
+
+                    stopDetected = 0;
+
+                        if (color_retry_counter > 0) {
+                            color_retry_counter--;
+                            break; // wait before retry
+                        }
+
+                        // read the classified color number and store it in the defined variable
+                        color_num = Color_Sensor.getColor();
+
+                        // read the classified color string and store it in the defined variable
+                        color_string = Color_Sensor.getColorString(color_num);
+                        printf("Colour: %s\n", color_string);
+
+                        // move magazine based on colour and apply repositioning
+                        switch (color_num) {
+                        case 3: // RED
+                            rePosNeeded = false;
+                            color_valid = true;
+                            target_rotation = rotation_red;
+                            break;
+                        case 5: // GREEN
+                            rePosNeeded = false;
+                            color_valid = true;
+                            target_rotation = rotation_green;
+                            break;
+                        case 7: // BLUE
+                            rePosNeeded = false;
+                            color_valid = true;
+                            target_rotation = rotation_blue;
+                            break;
+                        case 4: // YELLOW
+                            rePosNeeded = false;
+                            color_valid = true;
+                            target_rotation = rotation_yellow;
+                            break;
+                        default:
+                            color_valid = false;
+                            break;
+                        }
+
+                        if(color_valid){
+                            color_active = target_rotation;
+                            printf("CLR: %f", color_active);
+                            magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity());
+                            target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                            magazine_motor.setRotationRelative(target_rotation);    // drive the motor
+                            robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;
+                        } else {
+                            color_retry_counter = color_retry_delay_cycles; // wait before retry
+                        }
+
+                    break;
                 }
-            }
+                case RobotState::WAIT_FOR_MAGAZINE_INIT: {
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_FOR_MAGAZINE_INIT\n");
 
-            if(!start_positioning.read()){
-
-                // read the classified color number and store it in the defined variable
-                color_num = Color_Sensor.getColor();
-
-                // read the classified color string and store it in the defined variable
-                color_string = Color_Sensor.getColorString(color_num);
-
-                // select magazine target position
-                switch (color_num) {
-                    case 3: // RED
-                        target_rotation = rotation_red;
-                        drive = true;
-                        break;
-                    case 5: // GREEN
-                        target_rotation = rotation_green;
-                        drive = true;
-                        break;
-                    case 7: // BLUE
-                        target_rotation = rotation_blue;
-                        drive = true;
-                        break;
-                    case 4: // YELLOW
-                        target_rotation = rotation_yellow;
-                        drive = true;
-                        break;
-                    case 1: case 2: // BLACK, WHITE
-                        printf("Useless\n");
-                        break;
-                    default:
+                    // wait until target position is reached
+                    if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
+                        if (rePosNeeded) {
+                            // Give repos command
+                            robot_state = RobotState::REPOSITIONING;
+                        } else {
+                            robot_state = RobotState::ARM_DOWN;
+                        }
                         
-                        break;
+                    }
+                    break;
+                }
+                case RobotState::REPOSITIONING: {
+
+                    // wait for repositioning
+                    robot_state = RobotState::ARM_DOWN;
+                    
+                    break;
+                }
+                case RobotState::ARM_DOWN:{
+                    printf("ARM_DOWN\n");
+                    magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*0.2);
+                    target_rotation = -grip_offset;
+                    target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                    magazine_motor.setRotationRelative(target_rotation);
+                    
+                    robot_state = RobotState::WAIT_ARM_DOWN;
+
+                    break;
+                }
+                case RobotState::WAIT_ARM_DOWN:{
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_ARM_DOWN\n");
+                    if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+
+                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*5);
+                        if (i<25){
+                            i++;
+                        }else{
+                            i=0;
+                            robot_state = RobotState::ARM_UP;
+                        }
+                        
+                    }else{
+                        i=0;
+                    }
+
+                    break;
+                }
+                case RobotState::ARM_UP:{
+                    printf("ARM_UP\n");
+                    magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*0.2);
+                    target_rotation = grip_offset;
+                    target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                    magazine_motor.setRotationRelative(target_rotation);
+                    
+                    robot_state = RobotState::WAIT_ARM_UP;
+
+                    break;
+                }
+                case RobotState::WAIT_ARM_UP:{
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_ARM_UP\n");
+                    if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+
+                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*5);
+                        if (i<25){
+                            i++;
+                        }else{
+                            i=0;
+                            robot_state = RobotState::CHECK_PACKAGE;
+                        }
+                    }else{
+                        i=0;
+                    }
+
+                    break;
+                }
+                case RobotState::CHECK_PACKAGE: {
+                    printf("CHECK_PACKAGE\n");
+
+                     if(picking){
+                        placing = false;
+                        if(us_distance_cm > 0.1f && us_distance_cm < 2.0f){
+                            packages_picked++;
+                            success = true;
+                        }else if(us_distance_cm < 0.0f){
+                            success = false;
+                            robot_state = RobotState::ARM_DOWN;
+                        }
+                    }
+                    else if(placing){
+                        picking = false;
+                        if(us_distance_cm < 0.0f){
+                            packages_placed++;
+                            success = true;
+                        }else if(us_distance_cm > 0.1f && us_distance_cm < 2.0f){
+                            success = false;
+                            robot_state = RobotState::ARM_DOWN;
+                        }
+                    }
+                    // if pick place, package yes no
+                    // increase the picked and place counters
+                    // if all placed finish
+
+                    // delete this after
+                    success = true;
+                    if(success){
+                        success = false;
+                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity());
+                        target_rotation = (1.0-color_active);
+                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                        magazine_motor.setRotationRelative(target_rotation);
+
+                        robot_state = RobotState::WAIT_FOR_MAGAZINE;
+                    }
+                    break;
+                }
+                case RobotState::WAIT_FOR_MAGAZINE: {
+                    printf("%f ", magazine_motor.getRotation());
+                    printf("WAIT_FOR_MAGAZINE\n");
+                    if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+
+                        if (i<25){
+                            i++;
+                        }else{
+                            i=0;
+                            robot_state = RobotState::DRIVING;
+                        }
+                    }else{
+                        i=0;
+                    }
+
+                    break;
+                }
+                case RobotState::FINISH: {
+                    printf("FINISH\n");
+
+                    break;
+                }
+                case RobotState::SLEEP: {
+                    printf("SLEEP\n");
+
+                    break;
+                }
+                case RobotState::EMERGENCY: {
+                    printf("EMERGENCY\n");
+
+                    break;
+                }
+                default: {
+                    break; // do nothing
                 }
             }
 
-            if (drive){
-                target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                magazine_motor.setRotationRelative(target_rotation);
-                drive = false;
-                moving = true;
-            }
-
-
-            if ((fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)&&moving){
-                printf("Finished Positioning\n");
-                moving = false;
-                print = false;
-            } else if (moving) {
-                printf("Positioning\n");
-            }
-
-            /*
-            if (!mechanical_button.read()) enable_motors=1;
-
-            if (drive){
-                drive = false;
-                magazine_motor.setRotationRelative(2.0f);
-            }
-            */
-                        
             // visual feedback that the main task is executed, setting this once would actually be enough
             led1 = 1;
         } else {
@@ -209,10 +402,22 @@ int main(){
 
                 // reset variables and objects
                 led1 = 0;
+                robot_state = RobotState::INITIAL;
+                magazine_motor.setVelocity(0.0f);
                 enable_motors = 0;
-                drive = false;
-                referenced = false;
-                moving = false;
+                color_valid = false;
+                rePosNeeded = false;
+                color_retry_counter = 0;
+                stopDetected = 0;
+                picking = false;
+                placing = false;
+                target_rotation = 0.0f;
+                target_position_absolute = 0.0f;
+                color_active    = 0.0f;
+                i = 0;
+                packages_picked = 0;
+                packages_placed = 0;
+                success = false;
             }
         }
 
