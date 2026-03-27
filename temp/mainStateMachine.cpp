@@ -28,14 +28,12 @@ int main(){
         INITIAL,
         DRIVING,
         CHECKING_COLOR,
-        WAIT_FOR_MAGAZINE,
+        WAIT_FOR_MAGAZINE_INIT,
         REPOSITIONING,
         ARM_DOWN,
         WAIT_ARM_DOWN,
         ARM_UP,
         WAIT_ARM_UP,
-        PICKING,
-        PLACING,
         FINISH,
         SLEEP,
         EMERGENCY
@@ -203,15 +201,15 @@ int main(){
                         if(color_valid){
                             target_position_absolute = magazine_motor.getRotation() + target_rotation;
                             magazine_motor.setRotationRelative(target_rotation);    // drive the motor
-                            robot_state = RobotState::WAIT_FOR_MAGAZINE;
+                            robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;
                         } else {
                             color_retry_counter = color_retry_delay_cycles; // wait before retry
                         }
 
                     break;
                 }
-                case RobotState::WAIT_FOR_MAGAZINE: {
-                    printf("WAIT_FOR_MAGAZINE\n");
+                case RobotState::WAIT_FOR_MAGAZINE_INIT: {
+                    printf("WAIT_FOR_MAGAZINE_INIT\n");
 
                     // wait until target position is reached
                     if (fabs(magazine_motor.getRotation() - target_rotation) < positionTolerance) {
@@ -219,14 +217,7 @@ int main(){
                             robot_state = RobotState::REPOSITIONING;
                         }
                         else {
-                            if(picking){
-                                placing = false;
-                                robot_state = RobotState::PICKING;
-                            }
-                            else if(placing){
-                                picking = false;
-                                robot_state = RobotState::PLACING;
-                            }
+                            robot_state = RobotState::ARM_DOWN;
                         }
                     }
                     break;
@@ -244,21 +235,11 @@ int main(){
                     break;
                 }
                 case RobotState::ARM_DOWN:{
-                    if(picking){
-                        target_rotation = -grip_offset;
-                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                        magazine_motor.setRotationRelative(target_rotation);
-                        picking = false;
-                        armDown = true;
-                    }
-
-                    if (armDown && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)){
-                        armDown = false;
-                        target_rotation = grip_offset;
-                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                        magazine_motor.setRotationRelative(target_rotation);
-                        armUp = true;
-                    }
+                    target_rotation = -grip_offset;
+                    target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                    magazine_motor.setRotationRelative(target_rotation);
+                    
+                    robot_state = RobotState::WAIT_ARM_DOWN;
 
                     if(armUp && (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance)){
                         armUp = false;
@@ -268,29 +249,28 @@ int main(){
                     break;
                 }
                 case RobotState::WAIT_ARM_DOWN:{
+                    if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+                        HAL_Delay(500);
+                        robot_state = RobotState::ARM_UP;
+                    }
 
                     break;
                 }
                 case RobotState::ARM_UP:{
+                    target_rotation = grip_offset;
+                    target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                    magazine_motor.setRotationRelative(target_rotation);
+                    
+                    robot_state = RobotState::WAIT_ARM_UP;
 
                     break;
                 }
                 case RobotState::WAIT_ARM_UP:{
-                    
-                    break;
-                }
-                case RobotState::PICKING: {
-                    
-                    // motor is positioned at target rotation
+                    if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+                        HAL_Delay(500);
+                        robot_state = RobotState::DRIVING;
+                    }
 
-                    picking = false;
-                    robot_state = RobotState::DRIVING;
-                    break;
-                }
-                case RobotState::PLACING: {
-
-                    placing = false;
-                    robot_state = RobotState::DRIVING;
                     break;
                 }
                 case RobotState::FINISH: {
