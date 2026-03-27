@@ -96,15 +96,15 @@ int main(){
     // DC Motor Magazine
     const float voltage_max = 12.0f; // maximum voltage of battery packs, adjust this to
                                      // 6.0f V if you only use one battery pack
-    const float gear_ratio_M3 = 78.125f; // gear ratio
-    const float kn_M3 = 180.0f / 12.0f;  // motor constant [rpm/V]
+    const float gear_ratio_M3 = 390.625f; // gear ratio
+    const float kn_M3 = 36.0f / 12.0f;  // motor constant [rpm/V]
     // it is assumed that only one motor is available, therefore
     // we use the pins from M1, so you can leave it connected to M1
     DCMotor magazine_motor(PB_PWM_M3, PB_ENC_A_M3, PB_ENC_B_M3, gear_ratio_M3, kn_M3, voltage_max);
     // enable the motion planner for smooth movement
     magazine_motor.enableMotionPlanner();
     // limit max. velocity to half physical possible velocity
-    magazine_motor.setMaxVelocity(magazine_motor.getMaxPhysicalVelocity() * 0.5f);
+    // magazine_motor.setMaxVelocity(magazine_motor.getMaxPhysicalVelocity() * 0.5f);
     float target_position_absolute = 0.0f;
     float reference_zero    = 0.0f;
     float target_rotation   = 0.0f;
@@ -163,7 +163,7 @@ int main(){
                     printf("DRIVING\n");
 
                     // Drive
-                    if(!skip_drive){
+                    if(!skip_drive.read()){
                     //if(stopDetected){
                         robot_state = RobotState::CHECKING_COLOR;
                     }
@@ -232,12 +232,10 @@ int main(){
                     if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
                         if (rePosNeeded) {
                             robot_state = RobotState::REPOSITIONING;
-                        }
-                        /*
-                        else {
+                        } else {
                             robot_state = RobotState::ARM_DOWN;
                         }
-                        */
+                        
                     }
                     break;
                 }
@@ -288,7 +286,7 @@ int main(){
                     printf("WAIT_ARM_UP\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
-                        if(!readcolor) robot_state = RobotState::CHECK_PACKAGE;
+                        robot_state = RobotState::CHECK_PACKAGE;
                     }
 
                     break;
@@ -309,7 +307,7 @@ int main(){
                     printf("WAIT_FOR_MAGAZINE\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
-                        if(!readcolor);robot_state = RobotState::DRIVING;
+                        robot_state = RobotState::DRIVING;
                     }
 
                     break;
