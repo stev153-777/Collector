@@ -222,29 +222,29 @@ int main(){
                         }
 
                         if(color_valid){
-                            color_active = target_rotation;
-                            printf("CLR: %f", color_active);
-                            magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity());
-                            target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                            magazine_motor.setRotationRelative(target_rotation);    // drive the motor
-                            robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;
+                            color_active = target_rotation;                                 // save the current color for later positioning
+                            printf("CLR: %f", color_active);                                // print the target rotation
+                            magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()); // set the velocity to 100%
+                            target_position_absolute = magazine_motor.getRotation() + target_rotation;  // calculate the absolut target position for later checks
+                            magazine_motor.setRotationRelative(target_rotation);            // command the motor
+                            robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;               // next state
                         } else {
-                            color_retry_counter = color_retry_delay_cycles; // wait before retry
+                            color_retry_counter = color_retry_delay_cycles;                 // wait before retry
                         }
 
                     break;
                 }
                 case RobotState::WAIT_FOR_MAGAZINE_INIT: {
-                    printf("%f ", magazine_motor.getRotation());
-                    printf("WAIT_FOR_MAGAZINE_INIT\n");
+                    printf("%f ", magazine_motor.getRotation());                            // print the current position
+                    printf("WAIT_FOR_MAGAZINE_INIT\n");                                     // print the state
 
                     // wait until target position is reached
                     if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
                         if (rePosNeeded) {
                             // Give repos command
-                            robot_state = RobotState::REPOSITIONING;
+                            robot_state = RobotState::REPOSITIONING;                        // next state
                         } else {
-                            robot_state = RobotState::ARM_DOWN;
+                            robot_state = RobotState::ARM_DOWN;                             // next state
                         }
                         
                     }
@@ -258,11 +258,11 @@ int main(){
                     break;
                 }
                 case RobotState::ARM_DOWN:{
-                    printf("ARM_DOWN\n");
-                    magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*0.2);
-                    target_rotation = -grip_offset;
-                    target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                    magazine_motor.setRotationRelative(target_rotation);
+                    printf("ARM_DOWN\n");                                                   // print the state
+                    magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*0.2);     // set the velocity to 20%
+                    target_rotation = -grip_offset;                                         // calculate the new target rotation
+                    target_position_absolute = magazine_motor.getRotation() + target_rotation;  // calculate the absolut target position for later checks
+                    magazine_motor.setRotationRelative(target_rotation);                    // command the motor
                     
                     robot_state = RobotState::WAIT_ARM_DOWN;
 
@@ -273,7 +273,9 @@ int main(){
                     printf("WAIT_ARM_DOWN\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
-                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*5);
+                        
+                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*5);   // reset the velocity to 100%
+                        // Delay, 25*20ms = 500ms
                         if (i<25){
                             i++;
                         }else{
@@ -303,7 +305,8 @@ int main(){
                     printf("WAIT_ARM_UP\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
-                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*5);
+                        magazine_motor.setMaxVelocity(magazine_motor.getMaxVelocity()*5);   // reset the velocity to 100%
+                        // Delay, 25*20ms = 500ms
                         if (i<25){
                             i++;
                         }else{
@@ -361,6 +364,7 @@ int main(){
                     printf("WAIT_FOR_MAGAZINE\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
+                        // Delay, 25*20ms = 500ms
                         if (i<25){
                             i++;
                         }else{
