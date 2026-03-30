@@ -120,7 +120,7 @@ int main(){
     float rotation_green    = 0.5f;
     float rotation_blue     = 0.75f;
     float rotation_yellow   = 1.0f;
-    float positionTolerance = 0.0005f;
+    float positionTolerance = 0.005f;
     float grip_offset       = 0.25f;
     float color_active      = 0.0f;
     int i                   = 0;
