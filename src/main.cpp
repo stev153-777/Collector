@@ -117,11 +117,11 @@ int main(){
     // float reference_zero    = 0.0f;
     float target_rotation   = 0.0f;
     float rotation_red      = 0.25f;
-    float rotation_green    = 0.5f;
-    float rotation_blue     = 0.75f;
+    float rotation_green    = 0.165f; // 0.5f
+    float rotation_blue     = 0.265f; // 0.75
     float rotation_yellow   = 1.0f;
     float positionTolerance = 0.005f;
-    float grip_offset       = 0.25f;
+    float grip_offset       = 0.2f;
     float color_active      = 0.0f;
     int i                   = 0;
     // float curr_pos          = 0.0f;
