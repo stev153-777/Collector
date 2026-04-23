@@ -173,7 +173,7 @@ int main()
                 break;
             }
 
-            case ALIGN_PIVOT:
+            case ALIGN_PIVOT:{
                 // drive forward a tiny bit more to center wheels on intersection
                 motor_left.setVelocity(drive_vel_rps);
                 motor_right.setVelocity(drive_vel_rps);
@@ -184,7 +184,7 @@ int main()
                     printf("Pivoting left (blind phase)...\r\n");
                 }
                 break;
-
+            }
             case TURN_LEFT_BLIND:
                 // point turn left: left backward, right forward
                 motor_left.setVelocity(-turn_vel_rps);

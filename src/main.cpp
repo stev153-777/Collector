@@ -12,6 +12,12 @@
 #include "ColorSensor.h"
 #include <cstring>
 #include "UltrasonicSensor.h"
+#include <cmath>
+#include <Eigen/Dense>
+#include "LineFollower.h"
+
+#define M_PIf 3.14159265358979323846f // pi
+using namespace std::chrono;
 
 bool do_execute_main_task = false; // this variable will be toggled via the user button (blue button) and
                                    // decides whether to execute the main task or not
@@ -29,7 +35,13 @@ int main(){
     // set up states for state machine
     enum RobotState {
         INITIAL,
-        DRIVING,
+        BLIND_DRIVE,          // drive straight, ignore sensors, exit start box
+        FIND_INTERSECTION,    // drive straight until outer sensors detect T-intersection
+        ALIGN_PIVOT,          // drive forward a bit more to center wheels on intersection
+        TURN_LEFT_BLIND,      // pivot left blindly to get off current line
+        TURN_LEFT_SEEK,       // continue pivoting left until center sensor finds new line
+        LINE_FOLLOW,          // normal PID line following
+        CROSS_LINE_STOP,
         CHECKING_COLOR,
         WAIT_FOR_MAGAZINE_INIT,
         REPOSITIONING,
@@ -60,7 +72,7 @@ int main(){
     // additional led
     // create DigitalOut object to command extra led, you need to add an additional resistor, e.g. 220...500 Ohm
     // a led has an anode (+) and a cathode (-), the cathode needs to be connected to ground via the resistor
-    DigitalOut led1(PB_9);
+    // DigitalOut led1(PB_9);
 
     // --- adding variables and objects and applying functions starts here ---
 
@@ -80,6 +92,51 @@ int main(){
 
     // line follower
     int stopDetected = 0;
+
+    const float voltage_max = 12.0f;
+    const float gear_ratio = 78.125f;
+    const float kn = 180.0f / 12.0f;
+    // M1 = left motor, M2 = right motor
+    DCMotor motor_left(PB_PWM_M1, PB_ENC_A_M1, PB_ENC_B_M1, gear_ratio, kn, voltage_max);
+    DCMotor motor_right(PB_PWM_M2, PB_ENC_A_M2, PB_ENC_B_M2, gear_ratio, kn, voltage_max);
+
+    // differential drive robot kinematics (values in mm, converted to meters)
+    const float d_wheel = 54.56f / 1000.0f; // wheel diameter
+    const float b_wheel = 144.0f / 1000.0f; // axel distance
+    const float bar_dist = 142.0f / 1000.0f; // distance between motoraxis and led
+
+    // line follower, tune max. vel rps to your needs
+    LineFollower lineFollower(PB_9, PB_8, bar_dist, d_wheel, b_wheel, motor_right.getMaxPhysicalVelocity());
+
+    // --- initialization sequence parameters (tune these on the real robot) ---
+    const float drive_vel_rps = 0.5f;          // forward drive speed in rps
+    const float turn_vel_rps = 0.5f;           // blind pivot turn speed in rps
+    const float turn_seek_vel_rps = 0.25f;    // slower seek speed for accurate line detection
+    const float line_follow_vel_rps = 1.0f;    // max wheel velocity during line following
+    const int blind_drive_ms = 150;            // time to drive straight out of start box
+    const int align_pivot_ms = 100;            // time to drive forward to align wheels on intersection
+    const int turn_blind_ms = 400;             // time to pivot blindly off the current line (~30 deg)
+    const float outer_sensor_threshold = 0.3f; // threshold for outer sensors detecting intersection
+    const float center_sensor_threshold = 0.3f; // threshold for center sensor detecting new line
+
+    // cross line detection by sensor pattern (tune on real robot)
+    // 100mm line: outer sensors lit (6+ LEDs active) -> outer > threshold
+    // 50mm line:  center sensors lit, outer NOT lit  -> center high, outer low
+    const float cross_line_outer_threshold = 0.5f;  // outer sensors above this = 100mm line
+    const float cross_line_center_threshold = 0.7f; // center sensors above this = 50mm line
+    const int cross_line_wait_50mm_ms = 1000;       // wait time for 50mm cross line
+    const int cross_line_wait_100mm_ms = 3000;      // wait time for 100mm cross line
+    const int cross_line_cooldown_ms = 500;          // ignore sensors briefly after a stop
+
+    // state machine variables
+    // InitState init_state = WAIT_FOR_BUTTON;
+    Timer state_timer;              // timer for timed state transitions
+    Timer cooldown_timer;           // cooldown after cross line stop
+    bool cooldown_active = false;   // true = ignore sensors temporarily
+    int wait_duration_ms = 0;       // how long to wait at cross line
+
+    // limit line follower max speed
+    lineFollower.setMaxWheelVelocity(line_follow_vel_rps);
 
     // ultrasonic sensor
     UltrasonicSensor us_sensor(PB_D3);
@@ -102,13 +159,13 @@ int main(){
     const int color_retry_delay_cycles = 5; // ~100 ms (5 * 20ms)
 
     // DC Motor Magazine
-    const float voltage_max = 12.0f; // maximum voltage of battery packs, adjust this to
+    const float voltage_max_mag = 12.0f; // maximum voltage of battery packs, adjust this to
                                      // 6.0f V if you only use one battery pack
     const float gear_ratio_M3 = 390.625f; // gear ratio
     const float kn_M3 = 36.0f / 12.0f;  // motor constant [rpm/V]
     // it is assumed that only one motor is available, therefore
     // we use the pins from M1, so you can leave it connected to M1
-    DCMotor magazine_motor(PB_PWM_M3, PB_ENC_A_M3, PB_ENC_B_M3, gear_ratio_M3, kn_M3, voltage_max);
+    DCMotor magazine_motor(PB_PWM_M3, PB_ENC_A_M3, PB_ENC_B_M3, gear_ratio_M3, kn_M3, voltage_max_mag);
     // enable the motion planner for smooth movement
     magazine_motor.enableMotionPlanner();
     // limit max. velocity to half physical possible velocity
@@ -133,12 +190,17 @@ int main(){
     // bool moving             = false;
     // bool armDown            = false;
     // bool armUp              = false;
+    magazine_motor.setVelocity(0.0f);
+    magazine_motor.setMaxVelocity(velocity_100);
 
     // create object to enable power electronics for the dc motors
     DigitalOut enable_motors(PB_ENABLE_DCMOTORS);
 
     // start timer
     main_task_timer.start();
+    // Start Timer
+    state_timer.reset();
+    state_timer.start();
 
     // this loop will run forever
     while (true) {
@@ -166,22 +228,122 @@ int main(){
                     } else {
                         magazine_motor.setVelocity(0.0f);
                         magazine_motor.setMaxVelocity(velocity_100);
-                        robot_state = RobotState::DRIVING;
+                        robot_state = RobotState::BLIND_DRIVE;
+                        state_timer.reset();
+                        state_timer.start();
                     }
                     break;
                 }
-                case RobotState::DRIVING: {
-                    printf("DRIVING\n");
-                    // decide if pick or place
-                    // Drive
-                    if(!skip_drive.read()){
-                    //if(stopDetected){
-                        robot_state = RobotState::CHECKING_COLOR;
+                case RobotState::BLIND_DRIVE: {
+                // drive straight forward, ignore all sensors
+                motor_left.setVelocity(drive_vel_rps);
+                motor_right.setVelocity(drive_vel_rps);
+                if (duration_cast<milliseconds>(state_timer.elapsed_time()).count() >= blind_drive_ms) {
+                    robot_state = RobotState::FIND_INTERSECTION;
+                    printf("Searching for T-intersection...\r\n");
+                    }
+                    break;
+                }
+                case RobotState::FIND_INTERSECTION: {
+                    // drive straight until outer sensors detect the horizontal line
+                    motor_left.setVelocity(drive_vel_rps);
+                    motor_right.setVelocity(drive_vel_rps);
+                    float outer = lineFollower.getMeanFourAvgBitsOuter();
+                    if (outer > outer_sensor_threshold)
+                    {
+                        robot_state = RobotState::ALIGN_PIVOT;
+                        state_timer.reset();
+                        printf("Intersection found (outer=%.2f), aligning...\r\n", outer);
+                    }
+                    break;
+                }
+                case RobotState::ALIGN_PIVOT: {
+                    // drive forward a tiny bit more to center wheels on intersection
+                    motor_left.setVelocity(drive_vel_rps);
+                    motor_right.setVelocity(drive_vel_rps);
+                    if (duration_cast<milliseconds>(state_timer.elapsed_time()).count() >= align_pivot_ms)
+                    {
+                        robot_state = RobotState::TURN_LEFT_BLIND;
+                        state_timer.reset();
+                        printf("Pivoting left (blind phase)...\r\n");
+                    }
+                    break;
+                }
+                case RobotState::TURN_LEFT_BLIND: {
+                    // point turn left: left backward, right forward
+                    motor_left.setVelocity(-turn_vel_rps);
+                    motor_right.setVelocity(turn_vel_rps);
+                    if (duration_cast<milliseconds>(state_timer.elapsed_time()).count() >= turn_blind_ms)
+                    {
+                        robot_state = RobotState::TURN_LEFT_SEEK;
+                        printf("Pivoting left (seeking line)...\r\n");
+                    }
+                    break;
+                }
+                case RobotState::TURN_LEFT_SEEK: {
+                    // continue pivoting left slowly: left backward, right forward
+                    motor_left.setVelocity(-turn_seek_vel_rps);
+                    motor_right.setVelocity(turn_seek_vel_rps);
+                    float center = lineFollower.getMeanFourAvgBitsCenter();
+                    if (center > center_sensor_threshold)
+                    {
+                        robot_state = RobotState::LINE_FOLLOW;
+                        printf("Line found (center=%.2f), switching to line follower\r\n", center);
+                    }
+                    break;
+                }
+                case RobotState::LINE_FOLLOW: {
+                    printf("LINE_FOLLOW\n");
+                    // normal PID line following (M1 = left, M2 = right)
+                    motor_left.setVelocity(lineFollower.getLeftWheelVelocity());
+                    motor_right.setVelocity(lineFollower.getRightWheelVelocity());
+
+                    // expire cooldown if active
+                    if (cooldown_active &&
+                        duration_cast<milliseconds>(cooldown_timer.elapsed_time()).count() >= cross_line_cooldown_ms)
+                    {
+                        cooldown_active = false;
+                    }
+
+                    // detect cross lines by sensor pattern (only when cooldown expired)
+                    if (!cooldown_active)
+                    {
+                        float outer_val = lineFollower.getMeanFourAvgBitsOuter();
+                        float center_val = lineFollower.getMeanFourAvgBitsCenter();
+
+                        if (outer_val > cross_line_outer_threshold)
+                        {
+                            // 100mm line: outer sensors strongly lit (6+ LEDs)
+                            wait_duration_ms = cross_line_wait_100mm_ms;
+                            robot_state = RobotState::CROSS_LINE_STOP;
+                            state_timer.reset();
+                            printf("100mm line (outer=%.2f, center=%.2f), waiting %d ms\r\n",
+                                outer_val, center_val, wait_duration_ms);
+                        }
+                        else if (center_val > cross_line_center_threshold && outer_val < cross_line_outer_threshold)
+                        {
+                            // 50mm line: center sensors strongly lit, outer NOT lit
+                            wait_duration_ms = cross_line_wait_50mm_ms;
+                            robot_state = RobotState::CROSS_LINE_STOP;
+                            state_timer.reset();
+                            printf("50mm line (outer=%.2f, center=%.2f), waiting %d ms\r\n",
+                                outer_val, center_val, wait_duration_ms);
+                        }
                     }
                     break;
                 }   
+                case RobotState::CROSS_LINE_STOP:{
+                    printf("CROSS_LINE_STOP\n");
+                    motor_left.setVelocity(0.0f);
+                    motor_right.setVelocity(0.0f);
+                    
+                    robot_state = RobotState::CHECKING_COLOR;
+                    break;
+                }
                 case RobotState::CHECKING_COLOR: {
-
+                    printf("CHECKINK_COLOR\n");
+                    motor_left.setVelocity(0.0f);
+                    motor_right.setVelocity(0.0f);
                     stopDetected = 0;
 
                         if (color_retry_counter > 0) {
@@ -371,7 +533,7 @@ int main(){
                             i++;
                         }else{
                             i=0;
-                            robot_state = RobotState::DRIVING;
+                            robot_state = RobotState::LINE_FOLLOW;
                         }
                     }else{
                         i=0;
@@ -400,14 +562,14 @@ int main(){
             }
 
             // visual feedback that the main task is executed, setting this once would actually be enough
-            led1 = 1;
+            //led1 = 1;
         } else {
             // the following code block gets executed only once
             if (do_reset_all_once) {
                 do_reset_all_once = false;
 
                 // reset variables and objects
-                led1 = 0;
+                //led1 = 0;
                 robot_state = RobotState::INITIAL;
                 magazine_motor.setVelocity(0.0f);
                 enable_motors = 0;
@@ -424,6 +586,14 @@ int main(){
                 packages_picked = 0;
                 packages_placed = 0;
                 success = false;
+                motor_left.setVelocity(0.0f);
+                motor_right.setVelocity(0.0f);
+                cooldown_active = false;
+                wait_duration_ms = 0;
+                state_timer.stop();
+                state_timer.reset();
+                cooldown_timer.stop();
+                cooldown_timer.reset();
             }
         }
 
