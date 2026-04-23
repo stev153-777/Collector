@@ -91,7 +91,7 @@ int main(){
     readcolor.mode(PullUp);
 
     // line follower
-    int stopDetected = 0;
+    // int stopDetected = 0;
 
     const float voltage_max = 12.0f;
     const float gear_ratio = 78.125f;
@@ -328,6 +328,8 @@ int main(){
                             state_timer.reset();
                             printf("50mm line (outer=%.2f, center=%.2f), waiting %d ms\r\n",
                                 outer_val, center_val, wait_duration_ms);
+                                packages_placed ++;
+                                if (packages_placed==4){robot_state=RobotState::FINISH;}
                         }
                     }
                     break;
@@ -344,7 +346,7 @@ int main(){
                     printf("CHECKINK_COLOR\n");
                     motor_left.setVelocity(0.0f);
                     motor_right.setVelocity(0.0f);
-                    stopDetected = 0;
+                    // stopDetected = 0;
 
                         if (color_retry_counter > 0) {
                             color_retry_counter--;
@@ -380,6 +382,9 @@ int main(){
                             color_valid = true;
                             target_rotation = rotation_yellow;
                             break;
+                        case 1: // White
+                            color_valid = false;
+                            robot_state = RobotState::LINE_FOLLOW;
                         default:
                             color_valid = false;
                             break;
@@ -542,8 +547,10 @@ int main(){
                     break;
                 }
                 case RobotState::FINISH: {
-                    printf("FINISH\n");
-
+                    printf("Finished wie ich in deiner Mutter\n");
+                    motor_left.setVelocity(0.0f);
+                    motor_right.setVelocity(0.0f);
+                    enable_motors = false;
                     break;
                 }
                 case RobotState::SLEEP: {
@@ -576,7 +583,7 @@ int main(){
                 color_valid = false;
                 rePosNeeded = false;
                 color_retry_counter = 0;
-                stopDetected = 0;
+                // stopDetected = 0;
                 picking = false;
                 placing = false;
                 target_rotation = 0.0f;
