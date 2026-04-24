@@ -176,10 +176,10 @@ int main(){
     float velocity_10 = (magazine_motor.getMaxVelocity()*0.1);
     float velocity_20 = (magazine_motor.getMaxVelocity()*0.2);
     float target_rotation   = 0.0f;
-    float rotation_red      = 0.32f;
-    float rotation_green    = 0.42f; // 0.5f
-    float rotation_blue     = 0.82f; // 0.75
-    float rotation_yellow   = 0.92f;
+    float rotation_red      = 0.17f;
+    float rotation_green    = 0.27f; // 0.5f
+    float rotation_blue     = 0.67f; // 0.75
+    float rotation_yellow   = 0.77f;
     float positionTolerance = 0.0005f;
     float grip_offset       = 0.2f;
     float color_active      = 0.0f;
@@ -294,6 +294,10 @@ int main(){
                 }
                 case RobotState::LINE_FOLLOW: {
                     printf("LINE_FOLLOW\n");
+                    if (packages_placed==4){
+                        robot_state=RobotState::FINISH;
+                        break;
+                    }
                     // normal PID line following (M1 = left, M2 = right)
                     motor_left.setVelocity(lineFollower.getLeftWheelVelocity());
                     motor_right.setVelocity(lineFollower.getRightWheelVelocity());
@@ -323,13 +327,12 @@ int main(){
                         else if (center_val > cross_line_center_threshold && outer_val < cross_line_outer_threshold)
                         {
                             // 50mm line: center sensors strongly lit, outer NOT lit
+                            placing = true;
                             wait_duration_ms = cross_line_wait_50mm_ms;
                             robot_state = RobotState::CROSS_LINE_STOP;
                             state_timer.reset();
                             printf("50mm line (outer=%.2f, center=%.2f), waiting %d ms\r\n",
-                                outer_val, center_val, wait_duration_ms);
-                                packages_placed ++;
-                                if (packages_placed==4){robot_state=RobotState::FINISH;}
+                            outer_val, center_val, wait_duration_ms);
                         }
                     }
                     break;
@@ -480,6 +483,10 @@ int main(){
                             i++;
                         }else{
                             i=0;
+                            if (placing){
+                                placing = false;
+                                packages_placed ++;
+                            } 
                             robot_state = RobotState::CHECK_PACKAGE;
                         }
                     }else{
@@ -491,6 +498,7 @@ int main(){
                 case RobotState::CHECK_PACKAGE: {
                     printf("CHECK_PACKAGE\n");
 
+                    /*
                      if(picking){
                         placing = false;
                         if(us_distance_cm > 0.1f && us_distance_cm < 2.0f){
@@ -511,6 +519,7 @@ int main(){
                             robot_state = RobotState::ARM_DOWN;
                         }
                     }
+                    */
                     // if pick place, package yes no
                     // increase the picked and place counters
                     // if all placed finish
@@ -547,7 +556,7 @@ int main(){
                     break;
                 }
                 case RobotState::FINISH: {
-                    printf("Finished wie ich in deiner Mutter\n");
+                    printf("FINISHED\n");
                     motor_left.setVelocity(0.0f);
                     motor_right.setVelocity(0.0f);
                     enable_motors = false;
