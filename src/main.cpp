@@ -385,9 +385,10 @@ int main(){
                             color_valid = true;
                             target_rotation = rotation_yellow;
                             break;
-                        case 1: // White
+                        case 1: case 2: // Black / White
                             color_valid = false;
                             robot_state = RobotState::LINE_FOLLOW;
+                            break;
                         default:
                             color_valid = false;
                             break;
