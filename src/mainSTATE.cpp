@@ -51,9 +51,7 @@ int main(){
         WAIT_ARM_UP,
         CHECK_PACKAGE,
         WAIT_FOR_MAGAZINE,
-        FINISH,
-        SLEEP,
-        EMERGENCY
+        FINISH
     } robot_state = RobotState::INITIAL;
 
     // attach button fall function address to user button object
@@ -300,10 +298,7 @@ int main(){
                 }
                 case RobotState::LINE_FOLLOW: {
                     printf("LINE_FOLLOW\n");
-                    if (packages_placed==4){
-                        robot_state=RobotState::FINISH;
-                        break;
-                    }
+                    
                     // normal PID line following (M1 = left, M2 = right)
                     motor_left.setVelocity(lineFollower.getLeftWheelVelocity());
                     motor_right.setVelocity(lineFollower.getRightWheelVelocity());
@@ -576,6 +571,7 @@ int main(){
                 case RobotState::WAIT_FOR_MAGAZINE: {
                     printf("%f ", magazine_motor.getRotation());
                     printf("WAIT_FOR_MAGAZINE\n");
+
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
                         // Delay, 25*20ms = 500ms
@@ -589,6 +585,11 @@ int main(){
                         i=0;
                     }
 
+                    if (packages_placed==4){
+                        robot_state=RobotState::FINISH;
+                        break;
+                    }
+
                     break;
                 }
                 case RobotState::FINISH: {
@@ -596,16 +597,6 @@ int main(){
                     motor_left.setVelocity(0.0f);
                     motor_right.setVelocity(0.0f);
                     enable_motors = false;
-                    break;
-                }
-                case RobotState::SLEEP: {
-                    printf("SLEEP\n");
-
-                    break;
-                }
-                case RobotState::EMERGENCY: {
-                    printf("EMERGENCY\n");
-
                     break;
                 }
                 default: {
