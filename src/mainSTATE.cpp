@@ -156,7 +156,13 @@ int main(){
     const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
     ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_3
     int color_retry_counter = 0;
-    const int color_retry_delay_cycles = 5; // ~100 ms (5 * 20ms)
+    const int color_retry_delay_cycles = 25; // 500 ms
+    // const int color_retry_delay_cycles = 5; // ~100 ms (5 * 20ms)
+    const int max_color_retries = 5;
+    int color_attempts = 0;
+    float color_raw_Hz[4] = {0.0f};
+    float color_avg_Hz[4] = {0.0f};
+    float color_cal[4] = {0.0f};        
 
     // DC Motor Magazine
     const float voltage_max_mag = 12.0f; // maximum voltage of battery packs, adjust this to
@@ -346,65 +352,94 @@ int main(){
                     break;
                 }
                 case RobotState::CHECKING_COLOR: {
-                    printf("CHECKINK_COLOR\n");
+                    printf("CHECKING_COLOR\n");
                     motor_left.setVelocity(0.0f);
                     motor_right.setVelocity(0.0f);
-                    // stopDetected = 0;
 
-                        if (color_retry_counter > 0) {
-                            color_retry_counter--;
-                            break; // wait before retry
-                        }
+                    if (color_retry_counter > 0) {
+                        color_retry_counter--;
+                        break; // wait before retry
+                    }
 
-                        // read the classified color number and store it in the defined variable
-                        color_num = Color_Sensor.getColor();
+                    // read color
+                    for (int j = 0; j < 4; j++) {
+                        color_raw_Hz[j] = Color_Sensor.readRawColor()[j];
+                    }
 
-                        // read the classified color string and store it in the defined variable
-                        color_string = Color_Sensor.getColorString(color_num);
-                        printf("Colour: %s\n", color_string);
+                    for (int j = 0; j < 4; j++) {
+                        color_avg_Hz[j] = Color_Sensor.readColor()[j];
+                    }
 
-                        // move magazine based on colour and apply repositioning
-                        switch (color_num) {
+                    for (int j = 0; j < 4; j++) {
+                        color_cal[j] = Color_Sensor.readColorCalib()[j];
+                    }
+
+                    color_num = Color_Sensor.getColor();
+                    color_string = Color_Sensor.getColorString(color_num);
+
+                    printf("Color Num: %d Color %s\n", color_num, color_string);
+
+                    // color_num = Color_Sensor.getColor();
+                    // color_string = Color_Sensor.getColorString(color_num);
+                    // printf("Colour: %s\n", color_string);
+
+                    // reset valid flag
+                    color_valid = false;
+
+                    switch (color_num) {
                         case 3: // RED
-                            rePosNeeded = false;
-                            color_valid = true;
                             target_rotation = rotation_red;
+                            color_valid = true;
                             break;
                         case 5: // GREEN
-                            rePosNeeded = false;
-                            color_valid = true;
                             target_rotation = rotation_green;
+                            color_valid = true;
                             break;
                         case 7: // BLUE
-                            rePosNeeded = false;
-                            color_valid = true;
                             target_rotation = rotation_blue;
+                            color_valid = true;
                             break;
                         case 4: // YELLOW
-                            rePosNeeded = false;
-                            color_valid = true;
                             target_rotation = rotation_yellow;
+                            color_valid = true;
                             break;
-                        case 1: case 2: // Black / White
-                            color_valid = false;
-                            robot_state = RobotState::LINE_FOLLOW;
-                            break;
+
+                        case 1: 
+                        case 2: // BLACK / WHITE
                         default:
                             color_valid = false;
                             break;
-                        }
+                    }
+                    if (color_valid) {
+                        color_attempts = 0; // reset attempts
+                        color_retry_counter = 0;
 
-                        if(color_valid){
-                            color_active = target_rotation;                                 // save the current color for later positioning
-                            printf("CLR: %f", color_active);                                // print the target rotation
-                            magazine_motor.setMaxVelocity(velocity_100);                    // set the velocity to 100%
-                            target_position_absolute = magazine_motor.getRotation() + target_rotation;  // calculate the absolut target position for later checks
-                            magazine_motor.setRotationRelative(target_rotation);            // command the motor
-                            robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;               // next state
+                        color_active = target_rotation;
+                        magazine_motor.setMaxVelocity(velocity_100);
+                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                        magazine_motor.setRotationRelative(target_rotation);
+
+                        robot_state = RobotState::WAIT_FOR_MAGAZINE_INIT;
+                    } 
+                    else {
+                        color_attempts++;
+
+                        if (color_attempts >= max_color_retries) {
+                            printf("No valid color after %d tries -> continue line follow\n", color_attempts);
+
+                            color_attempts = 0;
+                            color_retry_counter = 0;   // add this
+
+                            cooldown_active = true;
+                            cooldown_timer.reset();
+                            cooldown_timer.start();
+
+                            robot_state = RobotState::LINE_FOLLOW;
                         } else {
-                            color_retry_counter = color_retry_delay_cycles;                 // wait before retry
+                            // retry after delay
+                            color_retry_counter = color_retry_delay_cycles;
                         }
-
+                    }
                     break;
                 }
                 case RobotState::WAIT_FOR_MAGAZINE_INIT: {
@@ -592,7 +627,6 @@ int main(){
                 enable_motors = 0;
                 color_valid = false;
                 rePosNeeded = false;
-                color_retry_counter = 0;
                 // stopDetected = 0;
                 picking = false;
                 placing = false;
@@ -611,6 +645,8 @@ int main(){
                 state_timer.reset();
                 cooldown_timer.stop();
                 cooldown_timer.reset();
+                color_retry_counter = 0;
+                color_attempts = 0; 
             }
         }
 
