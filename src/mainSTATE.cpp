@@ -136,9 +136,11 @@ int main(){
     // limit line follower max speed
     lineFollower.setMaxWheelVelocity(line_follow_vel_rps);
 
+    /*
     // ultrasonic sensor
     UltrasonicSensor us_sensor(PB_D3);
     float us_distance_cm = 0.0f;
+    */
     bool success = false;
 
     // Pick or Place
@@ -152,7 +154,7 @@ int main(){
     bool color_valid = false;
     int color_num = 0; // define a variable to store the color number, e.g. 0 for red, 1 for green, 2 for blue, 3 for clear
     const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
-    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_3
+    ColorSensor Color_Sensor(PB_5); // create ColorSensor object, connect the frequency output pin of the sensor to PB_5
     int color_retry_counter = 0;
     const int color_retry_delay_cycles = 25; // 500 ms
     // const int color_retry_delay_cycles = 5; // ~100 ms (5 * 20ms)
@@ -180,10 +182,10 @@ int main(){
     float velocity_10 = (magazine_motor.getMaxVelocity()*0.1);
     float velocity_20 = (magazine_motor.getMaxVelocity()*0.2);
     float target_rotation   = 0.0f;
-    float rotation_red      = 0.17f;
-    float rotation_green    = 0.27f; // 0.5f
-    float rotation_blue     = 0.67f; // 0.75
-    float rotation_yellow   = 0.77f;
+    float rotation_red      = 0.309f; 
+    float rotation_green    = 0.475f; 
+    float rotation_blue     = 0.975f;  
+    float rotation_yellow   = 0.809f;  
     float positionTolerance = 0.0005f;
     float grip_offset       = 0.2f;
     float color_active      = 0.0f;
@@ -215,7 +217,7 @@ int main(){
         if (do_execute_main_task) {
 
             // --- code that runs when the blue button was pressed goes here ---
-            us_distance_cm = us_sensor.read();
+            // us_distance_cm = us_sensor.read();
 
             // state machine
             switch (robot_state) {
@@ -473,6 +475,7 @@ int main(){
                 }
                 case RobotState::WAIT_ARM_DOWN:{
                     printf("%f ", magazine_motor.getRotation());
+                    printf("%f ", target_position_absolute);
                     printf("WAIT_ARM_DOWN\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
@@ -505,6 +508,7 @@ int main(){
                 }
                 case RobotState::WAIT_ARM_UP:{
                     printf("%f ", magazine_motor.getRotation());
+                    printf("%f ", target_position_absolute);
                     printf("WAIT_ARM_UP\n");
                     if(fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
 
