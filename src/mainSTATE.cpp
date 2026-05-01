@@ -67,11 +67,6 @@ int main(){
     // led on nucleo board
     DigitalOut user_led(LED1);
 
-    // additional led
-    // create DigitalOut object to command extra led, you need to add an additional resistor, e.g. 220...500 Ohm
-    // a led has an anode (+) and a cathode (-), the cathode needs to be connected to ground via the resistor
-    // DigitalOut led1(PB_9);
-
     // --- adding variables and objects and applying functions starts here ---
 
     // mechanical button (reference magazine)
@@ -80,17 +75,7 @@ int main(){
     mechanical_button.mode(PullUp);     // sets pullup between pin and 3.3 V, so that there
                                         // is a defined potential
 
-
-    // mechanical button (skip Drive)
-    DigitalIn skip_drive(PB_1);
-    skip_drive.mode(PullUp);
-    // mechanical button (read color and pick)
-    DigitalIn readcolor(PB_2);
-    readcolor.mode(PullUp);
-
     // line follower
-    // int stopDetected = 0;
-
     const float voltage_max = 12.0f;
     const float gear_ratio = 78.125f;
     const float kn = 180.0f / 12.0f;
@@ -182,20 +167,14 @@ int main(){
     float velocity_10 = (magazine_motor.getMaxVelocity()*0.1);
     float velocity_20 = (magazine_motor.getMaxVelocity()*0.2);
     float target_rotation   = 0.0f;
-    float rotation_red      = 0.309f; 
-    float rotation_green    = 0.475f; 
-    float rotation_blue     = 0.975f;  
-    float rotation_yellow   = 0.809f;  
+    float rotation_red      = 0.29f; 
+    float rotation_green    = 0.71; 
+    float rotation_blue     = 0.96f;  
+    float rotation_yellow   = 0.04f;  
     float positionTolerance = 0.0005f;
     float grip_offset       = 0.2f;
     float color_active      = 0.0f;
     int i                   = 0;
-    // float curr_pos          = 0.0f;
-    // bool executePositioning = false;
-    // bool referenced         = false;
-    // bool moving             = false;
-    // bool armDown            = false;
-    // bool armUp              = false;
     magazine_motor.setVelocity(0.0f);
     magazine_motor.setMaxVelocity(velocity_100);
 
@@ -609,20 +588,17 @@ int main(){
             }
 
             // visual feedback that the main task is executed, setting this once would actually be enough
-            //led1 = 1;
         } else {
             // the following code block gets executed only once
             if (do_reset_all_once) {
                 do_reset_all_once = false;
 
                 // reset variables and objects
-                //led1 = 0;
                 robot_state = RobotState::INITIAL;
                 magazine_motor.setVelocity(0.0f);
                 enable_motors = 0;
                 color_valid = false;
                 rePosNeeded = false;
-                // stopDetected = 0;
                 picking = false;
                 placing = false;
                 target_rotation = 0.0f;
