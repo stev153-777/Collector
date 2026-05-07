@@ -155,7 +155,7 @@ int main(){
     bool color_valid = false;
     int color_num = 0; // define a variable to store the color number, e.g. 0 for red, 1 for green, 2 for blue, 3 for clear
     const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
-    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_5
+    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_3
     int color_retry_counter = 0;
     const int color_retry_delay_cycles = 25; // 500 ms
     const int max_color_retries = 5;
@@ -167,8 +167,8 @@ int main(){
     // DC Motor Magazine
     const float voltage_max_mag = 12.0f; // maximum voltage of battery packs, adjust this to
                                          // 6.0f V if you only use one battery pack
-    const float gear_ratio_M3 = 195.0f; // gear ratio
-    const float kn_M3 = 36.0f / 12.0f;  // motor constant [rpm/V]
+    const float gear_ratio_M3 = 195.3125f; // gear ratio
+    const float kn_M3 = 72.0f / 12.0f;  // motor constant [rpm/V]
     // it is assumed that only one motor is available, therefore
     // we use the pins from M1, so you can leave it connected to M1
     DCMotor magazine_motor(PB_PWM_M3, PB_ENC_A_M3, PB_ENC_B_M3, gear_ratio_M3, kn_M3, voltage_max_mag);
@@ -215,7 +215,7 @@ int main(){
 
                     // while magazine is not referenced, drive forwards until reference button
                     if (!mechanical_button.read()) {
-                        magazine_motor.setVelocity(velocity_10);
+                        magazine_motor.setVelocity(velocity_10); //10
                     } else {
                         magazine_motor.setVelocity(0.0f);
                         magazine_motor.setMaxVelocity(velocity_100);
@@ -510,7 +510,7 @@ int main(){
 
                 case RobotState::ARM_DOWN: {
                     printf("ARM_DOWN\n");
-                    magazine_motor.setMaxVelocity(velocity_20);
+                    magazine_motor.setMaxVelocity(velocity_20); //20
                     // _sigrisev Anpassung grip_offset, da bei Zustellhäuser hält Roboter früher an
                     target_rotation = -grip_offset_picking;
                     if (placing) {
@@ -546,7 +546,7 @@ int main(){
 
                 case RobotState::ARM_UP: {
                     printf("ARM_UP\n");
-                    magazine_motor.setMaxVelocity(velocity_20);
+                    magazine_motor.setMaxVelocity(velocity_20); //20
                    // _sigrisev Anpassung grip_offset, da bei Zustellhäuser hält Roboter früher an
                     target_rotation = grip_offset_picking;
                     if (placing) {
@@ -653,7 +653,23 @@ int main(){
                     printf("FINISHED\n");
                     motor_left.setVelocity(0.0f);
                     motor_right.setVelocity(0.0f);
+
+                    /*
+                    if(i==0){
+                        i = 1;
+                        target_rotation = 10;
+                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
+                        magazine_motor.setRotationRelative(target_rotation);
+                    }
+
+                    if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance){
+                        i = 0;
+                        enable_motors = false;
+                    }
+                    */
+
                     enable_motors = false;
+
                     break;
                 }
 
