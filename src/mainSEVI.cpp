@@ -44,8 +44,6 @@ int main(){
         CROSS_LINE_STOP,
         CHECKING_COLOR,
 
-        // Sonderablauf nur bei erster gueltiger Farberkennung:
-        // weiter mit Line Follow, dann encoderbasiert rueckwaerts, dann normal Line Follow
         FIRST_LINE_FOLLOW_FORWARD,
         FIRST_LINE_DRIVE_BACKWARD,
         FIRST_LINE_WAIT_BACKWARD,
@@ -58,6 +56,12 @@ int main(){
         WAIT_ARM_UP,
         CHECK_PACKAGE,
         WAIT_FOR_MAGAZINE,
+
+        DRIVE_FORWARD_TUNNEL,
+        DRIVE_FORWARD_TUNNEL_WAIT,
+        TURN_RIGHT_TUNNEL,
+        TURN_RIGHT_TUNNEL_WAIT,
+
         FINISH
     } robot_state = RobotState::INITIAL;
 
@@ -91,9 +95,9 @@ int main(){
     DCMotor motor_right(PB_PWM_M2, PB_ENC_A_M2, PB_ENC_B_M2, gear_ratio, kn, voltage_max);
 
     // differential drive robot kinematics (values in mm, converted to meters)
-    const float d_wheel = 54.56f / 1000.0f; // wheel diameter
-    const float b_wheel = 144.0f / 1000.0f; // axel distance
-    const float bar_dist = 142.0f / 1000.0f; // distance between motoraxis and led
+    const float d_wheel = 54.56f / 1000.0f; // wheel diameters
+    const float b_wheel = 137.0f / 1000.0f; // axel distance
+    const float bar_dist = 127.0f / 1000.0f; // distance between motoraxis and led
 
     // line follower, tune max. vel rps to your needs
     LineFollower lineFollower(PB_9, PB_8, bar_dist, d_wheel, b_wheel, motor_right.getMaxPhysicalVelocity());
@@ -124,9 +128,13 @@ int main(){
     const float first_line_backward_rot = -0.95f;      // TUNE: x Umdrehungen rueckwaerts;
     const float drive_position_tolerance = 0.01f;      // TUNE: Positionstoleranz fuer Antriebsmotoren
     float target_left_rotation = 0.0f;
-    float target_right_rotation = 0.0f;
-    const float first_line_backward_velocity_rps = 0.2f;
+    float target_right_rotation = 0.0f; 
+    const float first_line_backward_velocity_rps = 0.3f; // 0.2
     const float drive_velocity_normal_rps = line_follow_vel_rps;
+
+    // Tunnel stuff
+    const float tunnel_forward_rot = 2.93f;
+    const float tunnel_turn_rot = 0.5f;
 
     // state machine variables
     Timer state_timer;              // timer for timed state transitions
@@ -155,7 +163,7 @@ int main(){
     bool color_valid = false;
     int color_num = 0; // define a variable to store the color number, e.g. 0 for red, 1 for green, 2 for blue, 3 for clear
     const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
-    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PB_3
+    ColorSensor Color_Sensor(PB_5); // create ColorSensor object, connect the frequency output pin of the sensor to PB_5
     int color_retry_counter = 0;
     const int color_retry_delay_cycles = 25; // 500 ms
     const int max_color_retries = 5;
@@ -163,6 +171,11 @@ int main(){
     float color_raw_Hz[4] = {0.0f};
     float color_avg_Hz[4] = {0.0f};
     float color_cal[4] = {0.0f};
+    bool red_done = false;
+    bool green_done = false;
+    bool blue_done = false;
+    bool yellow_done = false;
+
 
     // DC Motor Magazine
     const float voltage_max_mag = 12.0f; // maximum voltage of battery packs, adjust this to
@@ -177,17 +190,18 @@ int main(){
     float target_position_absolute = 0.0f;
     float velocity_100 = magazine_motor.getMaxVelocity();
     float velocity_10 = (magazine_motor.getMaxVelocity()*0.1f);
+    float velocity_15 = (magazine_motor.getMaxVelocity()*0.15f);
     float velocity_20 = (magazine_motor.getMaxVelocity()*0.2f);
-    float target_rotation   = 0.0f;
-    float rotation_red      = 0.295f; // old 0.29f
-    float rotation_green    = 0.71f; // old 0.71f
-    float rotation_blue     = 0.961f; // old 0.96f
-    float rotation_yellow   = 0.045f; // old 0.04f
-    float positionTolerance = 0.00075f; // old 0.0005f
-    float grip_offset_picking = 0.215f; // old 0.2f
-    float grip_offset_placing = 0.2f; // _sigrisev
-    float color_active      = 0.0f;
-    int i                   = 0;
+    float target_rotation       = 0.0f;
+    float rotation_red          = 0.25f; // old 0.29f
+    float rotation_green        = 0.66f; // old 0.71f
+    float rotation_blue         = 0.91f; // old 0.96f
+    float rotation_yellow       = 0.98f; // old 0.04f
+    float positionTolerance     = 0.005f; // old 0.0005f
+    float grip_offset_picking   = 0.18f; // 0.215f; // old 0.2f
+    float grip_offset_placing   = 0.18f; // _sigrisev
+    float color_active          = 0.0f;
+    int i                       = 0;
     magazine_motor.setVelocity(0.0f);
     magazine_motor.setMaxVelocity(velocity_100);
 
@@ -215,7 +229,7 @@ int main(){
 
                     // while magazine is not referenced, drive forwards until reference button
                     if (!mechanical_button.read()) {
-                        magazine_motor.setVelocity(velocity_10); //10
+                        magazine_motor.setVelocity(velocity_15); //10
                     } else {
                         magazine_motor.setVelocity(0.0f);
                         magazine_motor.setMaxVelocity(velocity_100);
@@ -305,6 +319,8 @@ int main(){
 
                         if (outer_val > cross_line_outer_threshold) {
                             // 100mm line: outer sensors strongly lit (6+ LEDs)
+                            picking = true;
+                            placing = false;
                             wait_duration_ms = cross_line_wait_100mm_ms;
                             robot_state = RobotState::CROSS_LINE_STOP;
                             state_timer.reset();
@@ -313,6 +329,7 @@ int main(){
                         }
                         else if (center_val > cross_line_center_threshold && outer_val < cross_line_outer_threshold) {
                             // 50mm line: center sensors strongly lit, outer NOT lit
+                            picking = false;
                             placing = true;
                             wait_duration_ms = cross_line_wait_50mm_ms;
                             robot_state = RobotState::CROSS_LINE_STOP;
@@ -368,18 +385,30 @@ int main(){
                         case 3: // RED
                             target_rotation = rotation_red;
                             color_valid = true;
+                            if(picking){
+                                red_done = true;
+                            }
                             break;
                         case 5: // GREEN
                             target_rotation = rotation_green;
                             color_valid = true;
+                            if(picking){
+                                green_done = true;
+                            }
                             break;
                         case 7: // BLUE
                             target_rotation = rotation_blue;
                             color_valid = true;
+                            if(picking){
+                                blue_done = true;
+                            }
                             break;
                         case 4: // YELLOW
                             target_rotation = rotation_yellow;
                             color_valid = true;
+                            if(picking){
+                                yellow_done = true;
+                            }
                             break;
 
                         case 1:
@@ -574,6 +603,8 @@ int main(){
                             if (placing) {
                                 placing = false;
                                 packages_placed++;
+                            } else {
+                                packages_picked++;
                             }
                             robot_state = RobotState::CHECK_PACKAGE;
                         }
@@ -610,14 +641,18 @@ int main(){
                     }
                     */
 
-                    // delete this after
+                    // delete this after implementing Ultrasonic Sensor
                     success = true;
                     if (success) {
                         success = false;
+
+                        // Test
+                        /*
                         magazine_motor.setMaxVelocity(velocity_100);
                         target_rotation = (1.0f - color_active);
                         target_position_absolute = magazine_motor.getRotation() + target_rotation;
                         magazine_motor.setRotationRelative(target_rotation);
+                        */
 
                         robot_state = RobotState::WAIT_FOR_MAGAZINE;
                     }
@@ -628,6 +663,30 @@ int main(){
                     printf("%f ", magazine_motor.getRotation());
                     printf("WAIT_FOR_MAGAZINE\n");
 
+                    if (picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
+                        picking = false;
+                        robot_state = RobotState::DRIVE_FORWARD_TUNNEL;
+                        break;
+                    }
+
+                    if (packages_placed == 4) {
+                        robot_state = RobotState::FINISH;
+                        break;
+                    }
+
+                    // while magazine is not referenced, drive forwards until reference button
+                    if (!mechanical_button.read()) {
+                        magazine_motor.setVelocity(velocity_15); //10
+                    } else {
+                        magazine_motor.setVelocity(0.0f);
+                        magazine_motor.setMaxVelocity(velocity_100);
+                    
+                        robot_state = RobotState::LINE_FOLLOW;
+                        
+                    }
+
+                    // Test
+                    /*
                     if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
 
                         // Delay, 25*20ms = 500ms
@@ -640,10 +699,97 @@ int main(){
                     } else {
                         i = 0;
                     }
+                    */
 
-                    if (packages_placed == 4) {
-                        robot_state = RobotState::FINISH;
-                        break;
+                    break;
+                }
+
+                case RobotState::DRIVE_FORWARD_TUNNEL:{
+                    printf("DRIVE_FORWARD_TUNNEL\n");
+
+                    motor_left.setVelocity(0.0f);
+                    motor_right.setVelocity(0.0f);
+
+                    motor_left.setMaxVelocity(drive_velocity_normal_rps);
+                    motor_right.setMaxVelocity(drive_velocity_normal_rps);
+
+                    target_left_rotation = motor_left.getRotation() + tunnel_forward_rot;
+                    target_right_rotation = motor_right.getRotation() + tunnel_forward_rot;
+
+                    motor_left.setRotationRelative(tunnel_forward_rot);
+                    motor_right.setRotationRelative(tunnel_forward_rot);
+
+                    robot_state = RobotState::DRIVE_FORWARD_TUNNEL_WAIT;
+
+                    break;
+                }
+
+                case RobotState::DRIVE_FORWARD_TUNNEL_WAIT:{
+                    printf("DRIVE_FORWARD_TUNNEL_WAIT\n");
+
+                    bool left_done = fabs(motor_left.getRotation() - target_left_rotation) < drive_position_tolerance;
+                    bool right_done = fabs(motor_right.getRotation() - target_right_rotation) < drive_position_tolerance;
+
+                    if (left_done && right_done) {
+                        motor_left.setMaxVelocity(drive_velocity_normal_rps);
+                        motor_right.setMaxVelocity(drive_velocity_normal_rps);
+
+                        cooldown_active = false;
+                        cooldown_timer.reset();
+                        cooldown_timer.start();
+
+                        robot_state = RobotState::TURN_RIGHT_TUNNEL;
+                    }
+
+                    break;
+                }
+
+                case RobotState::TURN_RIGHT_TUNNEL:{
+                    printf("TURN_RIGHT_TUNNEL\n");
+
+                    motor_left.setVelocity(turn_seek_vel_rps);
+                    motor_right.setVelocity(-turn_seek_vel_rps);
+                    float center = lineFollower.getMeanFourAvgBitsCenter();
+                    if (center > center_sensor_threshold) {
+                        robot_state = RobotState::LINE_FOLLOW;
+                        printf("Line found (center=%.2f), switching to line follower\r\n", center);
+                    }
+                    break;
+
+                    /*
+                    motor_left.setVelocity(0.0f);
+                    motor_right.setVelocity(0.0f);
+
+                    motor_left.setMaxVelocity(first_line_backward_velocity_rps);
+                    motor_right.setMaxVelocity(first_line_backward_velocity_rps);
+
+                    target_left_rotation = motor_left.getRotation() + tunnel_turn_rot;
+                    target_right_rotation = motor_right.getRotation() - tunnel_turn_rot;
+
+                    motor_left.setRotationRelative(tunnel_turn_rot);
+                    motor_right.setRotationRelative(tunnel_turn_rot);
+
+                    robot_state = RobotState::TURN_LEFT_TUNNEL_WAIT;
+
+                    break;
+                    */
+                }
+
+                case RobotState::TURN_RIGHT_TUNNEL_WAIT:{
+                    printf("TURN_RIGHT_TUNNEL_WAIT\n");
+
+                    bool left_done = fabs(motor_left.getRotation() - target_left_rotation) < drive_position_tolerance;
+                    bool right_done = fabs(motor_right.getRotation() - target_right_rotation) < drive_position_tolerance;
+
+                    if (left_done && right_done) {
+                        motor_left.setMaxVelocity(drive_velocity_normal_rps);
+                        motor_right.setMaxVelocity(drive_velocity_normal_rps);
+
+                        cooldown_active = false;
+                        cooldown_timer.reset();
+                        cooldown_timer.start();
+
+                        robot_state = RobotState::LINE_FOLLOW;
                     }
 
                     break;
@@ -654,7 +800,7 @@ int main(){
                     motor_left.setVelocity(0.0f);
                     motor_right.setVelocity(0.0f);
 
-                    /*
+                    
                     if(i==0){
                         i = 1;
                         target_rotation = 10;
@@ -666,9 +812,9 @@ int main(){
                         i = 0;
                         enable_motors = false;
                     }
-                    */
+                    
 
-                    enable_motors = false;
+                    // enable_motors = false;
 
                     break;
                 }
@@ -708,6 +854,10 @@ int main(){
                 cooldown_timer.reset();
                 color_retry_counter = 0;
                 color_attempts = 0;
+                red_done = false;
+                green_done = false;
+                blue_done = false;
+                yellow_done = false;
 
                 // Reset fuer Sonderablauf erste gueltige Querlinie
                 first_valid_crossline_done = false;

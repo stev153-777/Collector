@@ -105,15 +105,15 @@ void ColorSensor::reset()
 void ColorSensor::setCalibration()
 
 {
-    m_reference_black.red =  77.651f;     // measure the average raw frequency of the red channel with a black surface and store it as the black reference (dark level)
-    m_reference_black.green = 80.254f;   // measure the average raw frequency of the green channel with a black surface and store it as the black reference (dark level)
-    m_reference_black.blue = 95.982f;    // measure the average raw frequency of the blue channel with a black surface and store it as the black reference (dark level)
-    m_reference_black.white = 258.826f;  // measure the average raw frequency of the clear channel with a black surface and store it as the black reference (dark level)
+    m_reference_black.red =  63.880f;     // measure the average raw frequency of the red channel with a black surface and store it as the black reference (dark level)
+    m_reference_black.green = 64.603f;   // measure the average raw frequency of the green channel with a black surface and store it as the black reference (dark level)
+    m_reference_black.blue = 76.381f;    // measure the average raw frequency of the blue channel with a black surface and store it as the black reference (dark level)
+    m_reference_black.white = 208.143f;  // measure the average raw frequency of the clear channel with a black surface and store it as the black reference (dark level)
 
-    m_reference_white.red = 860.437f;     // measure the average raw frequency of the red channel with a white surface and store it as the white reference (normalization / white balance)
-    m_reference_white.green = 949.136f;   // measure the average raw frequency of the green channel with a white surface and store it as the white reference (normalization / white balance)
-    m_reference_white.blue = 1194.468f;    // measure the average raw frequency of the blue channel with a white surface and store it as the white reference (normalization / white balance)
-    m_reference_white.white = 3082.621f;  // measure the average raw frequency of the clear channel with a white surface and store it as the white reference (normalization / white balance)
+    m_reference_white.red = 902.527f;     // measure the average raw frequency of the red channel with a white surface and store it as the white reference (normalization / white balance)
+    m_reference_white.green = 1007.456f;   // measure the average raw frequency of the green channel with a white surface and store it as the white reference (normalization / white balance)
+    m_reference_white.blue = 1273.886f;    // measure the average raw frequency of the blue channel with a white surface and store it as the white reference (normalization / white balance)
+    m_reference_white.white = 3261.585f;  // measure the average raw frequency of the clear channel with a white surface and store it as the white reference (normalization / white balance)
 
     m_calib_black[0] = m_reference_black.red;
     m_calib_black[1] = m_reference_black.green;

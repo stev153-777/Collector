@@ -48,7 +48,7 @@ int main()
     
     int color_num = 0; // define a variable to store the color number, e.g. 0 for red, 1 for green, 2 for blue, 3 for clear
     const char* color_string; // define a variable to store the color string, e.g. "red", "green", "blue", "clear"
-    ColorSensor Color_Sensor(PB_3); // create ColorSensor object, connect the frequency output pin of the sensor to PC_2
+    ColorSensor Color_Sensor(PB_5); // create ColorSensor object, connect the frequency output pin of the sensor to PC_2
 
     // start timer
     main_task_timer.start();
@@ -88,8 +88,8 @@ int main()
             color_string = Color_Sensor.getColorString(color_num);
 
             // printf("Color Raw Hz: %f %f %f %f\n", color_raw_Hz[0], color_raw_Hz[1], color_raw_Hz[2], color_raw_Hz[3]); // uncomment to print raw color measurement in Hz
-            printf("Color Avg Hz: %f %f %f %f\n", color_avg_Hz[0], color_avg_Hz[1], color_avg_Hz[2], color_avg_Hz[3]); // uncomment to print average color measurement in Hz (used for calibration and color classification)
-           //  printf("Color Num: %d Color %s\n", color_num, color_string); // uncomment to print classified color number and string. careful: filters delay also delays the color classification,
+            // printf("Color Avg Hz: %f %f %f %f\n", color_avg_Hz[0], color_avg_Hz[1], color_avg_Hz[2], color_avg_Hz[3]); // uncomment to print average color measurement in Hz (used for calibration and color classification)
+            printf("Color Num: %d Color %s\n", color_num, color_string); // uncomment to print classified color number and string. careful: filters delay also delays the color classification,
                                                                          // so the first few readings after switching the color sensor might be wrong until the filters are settled
 
         } else {
