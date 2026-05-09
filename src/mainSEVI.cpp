@@ -190,9 +190,9 @@ int main(){
     float velocity_20 = (magazine_motor.getMaxVelocity()*0.2f);
     float target_rotation       = 0.0f;
     float rotation_red          = 0.25f; // old 0.29f
-    float rotation_green        = 0.66f; // old 0.71f
+    float rotation_green        = 0.68f; // old 0.71f
     float rotation_blue         = 0.91f; // old 0.96f
-    float rotation_yellow       = 0.98f; // old 0.04f
+    float rotation_yellow       = 0.04f; // old 0.04f
     float positionTolerance     = 0.005f; // old 0.0005f
     float grip_offset_picking   = 0.18f; // 0.215f; // old 0.2f
     float grip_offset_placing   = 0.18f; // _sigrisev
@@ -533,7 +533,8 @@ int main(){
                 }
 
                 case RobotState::ARM_DOWN: {
-                    printf("ARM_DOWN\n");
+                    printf("ARM_DOWN ");
+                    printf("%s\n", color_string);
                     magazine_motor.setMaxVelocity(velocity_20); //20
                     // _sigrisev Anpassung grip_offset, da bei Zustellhäuser hält Roboter früher an
                     target_rotation = -grip_offset_picking;
@@ -550,7 +551,8 @@ int main(){
                 case RobotState::WAIT_ARM_DOWN: {
                     printf("%f ", magazine_motor.getRotation());
                     printf("%f ", target_position_absolute);
-                    printf("WAIT_ARM_DOWN\n");
+                    printf("WAIT_ARM_DOWN ");
+                    printf("%s\n", color_string);
                     if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
 
                         magazine_motor.setMaxVelocity(velocity_100);
@@ -569,7 +571,8 @@ int main(){
                 }
 
                 case RobotState::ARM_UP: {
-                    printf("ARM_UP\n");
+                    printf("ARM_UP ");
+                    printf("%s\n", color_string);
                     magazine_motor.setMaxVelocity(velocity_20); //20
                    // _sigrisev Anpassung grip_offset, da bei Zustellhäuser hält Roboter früher an
                     target_rotation = grip_offset_picking;
@@ -586,7 +589,8 @@ int main(){
                 case RobotState::WAIT_ARM_UP: {
                     printf("%f ", magazine_motor.getRotation());
                     printf("%f ", target_position_absolute);
-                    printf("WAIT_ARM_UP\n");
+                    printf("WAIT_ARM_UP ");
+                    printf("%s\n", color_string);
                     if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
 
                         magazine_motor.setMaxVelocity(velocity_100);
@@ -598,7 +602,7 @@ int main(){
                             if (placing) {
                                 placing = false;
                                 packages_placed++;
-                            } else {
+                            } else if (picking) {
                                 packages_picked++;
                             }
                             robot_state = RobotState::CHECK_PACKAGE;
