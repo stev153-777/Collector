@@ -40,8 +40,10 @@ int main(){
         ALIGN_PIVOT,          // drive forward a bit more to center wheels on intersection
         TURN_LEFT_BLIND,      // pivot left blindly to get off current line
         TURN_LEFT_SEEK,       // continue pivoting left until center sensor finds new line
+
         LINE_FOLLOW,          // normal PID line following
         CROSS_LINE_STOP,
+
         CHECKING_COLOR,
 
         FIRST_LINE_FOLLOW_FORWARD,
@@ -60,7 +62,6 @@ int main(){
         DRIVE_FORWARD_TUNNEL,
         DRIVE_FORWARD_TUNNEL_WAIT,
         TURN_RIGHT_TUNNEL,
-        TURN_RIGHT_TUNNEL_WAIT,
 
         FINISH
     } robot_state = RobotState::INITIAL;
@@ -106,7 +107,7 @@ int main(){
     const float drive_vel_rps = 0.5f;          // forward drive speed in rps
     const float turn_vel_rps = 0.5f;           // blind pivot turn speed in rps
     const float turn_seek_vel_rps = 0.25f;     // slower seek speed for accurate line detection
-    const float line_follow_vel_rps = 1.0f;    // max wheel velocity during line following
+    const float line_follow_vel_rps = 1.5f;    //1.0f;    // max wheel velocity during line following 3 is max
     const int blind_drive_ms = 150;            // time to drive straight out of start box
     const int align_pivot_ms = 100;            // time to drive forward to align wheels on intersection
     const int turn_blind_ms = 400;             // time to pivot blindly off the current line (~30 deg)
@@ -116,8 +117,10 @@ int main(){
     // cross line detection by sensor pattern (tune on real robot)
     // 100mm line: outer sensors lit (6+ LEDs active) -> outer > threshold
     // 50mm line:  center sensors lit, outer NOT lit  -> center high, outer low
-    const float cross_line_outer_threshold = 0.5f;  // outer sensors above this = 100mm line
-    const float cross_line_center_threshold = 0.7f; // center sensors above this = 50mm line
+    const float cross_line_outer_threshold = 0.45f;
+    const float cross_line_center_threshold = 0.6f;
+    //const float cross_line_outer_threshold = 0.5f;  // outer sensors above this = 100mm line
+    //const float cross_line_center_threshold = 0.7f; // center sensors above this = 50mm line
     const int cross_line_wait_50mm_ms = 1000;       // wait time for 50mm cross line
     const int cross_line_wait_100mm_ms = 3000;      // wait time for 100mm cross line
     const int cross_line_cooldown_ms = 500;         // ignore sensors briefly after a stop
@@ -125,7 +128,7 @@ int main(){
     // Sonderablauf fuer erste gueltige Querlinie / Farberkennung
     bool first_valid_crossline_done = false;
     const int first_line_follow_forward_ms = 600;      // TUNE: wie lange nach gueltiger Farbe weiter mit Line Follow fahren
-    const float first_line_backward_rot = -0.95f;      // TUNE: x Umdrehungen rueckwaerts;
+    const float first_line_backward_rot = -1.25f;      // TUNE: x Umdrehungen rueckwaerts;
     const float drive_position_tolerance = 0.01f;      // TUNE: Positionstoleranz fuer Antriebsmotoren
     float target_left_rotation = 0.0f;
     float target_right_rotation = 0.0f; 
@@ -133,7 +136,7 @@ int main(){
     const float drive_velocity_normal_rps = line_follow_vel_rps;
 
     // Tunnel stuff
-    const float tunnel_forward_rot = 2.93f;
+    const float tunnel_forward_rot = 2.925f;
     const float tunnel_turn_rot = 0.5f;
 
     // state machine variables
@@ -144,13 +147,6 @@ int main(){
 
     // limit line follower max speed
     lineFollower.setMaxWheelVelocity(line_follow_vel_rps);
-
-    /*
-    // ultrasonic sensor
-    UltrasonicSensor us_sensor(PB_D3);
-    float us_distance_cm = 0.0f;
-    */
-    bool success = false;
 
     // Pick or Place
     int packages_picked = 0;
@@ -307,8 +303,7 @@ int main(){
                     motor_right.setVelocity(lineFollower.getRightWheelVelocity());
 
                     // expire cooldown if active
-                    if (cooldown_active &&
-                        duration_cast<milliseconds>(cooldown_timer.elapsed_time()).count() >= cross_line_cooldown_ms) {
+                    if (cooldown_active && duration_cast<milliseconds>(cooldown_timer.elapsed_time()).count() >= cross_line_cooldown_ms) {
                         cooldown_active = false;
                     }
 
@@ -618,44 +613,8 @@ int main(){
                 case RobotState::CHECK_PACKAGE: {
                     printf("CHECK_PACKAGE\n");
 
-                    /*
-                    if(picking){
-                        placing = false;
-                        if(us_distance_cm > 0.1f && us_distance_cm < 2.0f){
-                            packages_picked++;
-                            success = true;
-                        }else if(us_distance_cm < 0.0f){
-                            success = false;
-                            robot_state = RobotState::ARM_DOWN;
-                        }
-                    }
-                    else if(placing){
-                        picking = false;
-                        if(us_distance_cm < 0.0f){
-                            packages_placed++;
-                            success = true;
-                        }else if(us_distance_cm > 0.1f && us_distance_cm < 2.0f){
-                            success = false;
-                            robot_state = RobotState::ARM_DOWN;
-                        }
-                    }
-                    */
+                    robot_state = RobotState::WAIT_FOR_MAGAZINE;
 
-                    // delete this after implementing Ultrasonic Sensor
-                    success = true;
-                    if (success) {
-                        success = false;
-
-                        // Test
-                        /*
-                        magazine_motor.setMaxVelocity(velocity_100);
-                        target_rotation = (1.0f - color_active);
-                        target_position_absolute = magazine_motor.getRotation() + target_rotation;
-                        magazine_motor.setRotationRelative(target_rotation);
-                        */
-
-                        robot_state = RobotState::WAIT_FOR_MAGAZINE;
-                    }
                     break;
                 }
 
@@ -755,44 +714,6 @@ int main(){
                         printf("Line found (center=%.2f), switching to line follower\r\n", center);
                     }
                     break;
-
-                    /*
-                    motor_left.setVelocity(0.0f);
-                    motor_right.setVelocity(0.0f);
-
-                    motor_left.setMaxVelocity(first_line_backward_velocity_rps);
-                    motor_right.setMaxVelocity(first_line_backward_velocity_rps);
-
-                    target_left_rotation = motor_left.getRotation() + tunnel_turn_rot;
-                    target_right_rotation = motor_right.getRotation() - tunnel_turn_rot;
-
-                    motor_left.setRotationRelative(tunnel_turn_rot);
-                    motor_right.setRotationRelative(tunnel_turn_rot);
-
-                    robot_state = RobotState::TURN_LEFT_TUNNEL_WAIT;
-
-                    break;
-                    */
-                }
-
-                case RobotState::TURN_RIGHT_TUNNEL_WAIT:{
-                    printf("TURN_RIGHT_TUNNEL_WAIT\n");
-
-                    bool left_done = fabs(motor_left.getRotation() - target_left_rotation) < drive_position_tolerance;
-                    bool right_done = fabs(motor_right.getRotation() - target_right_rotation) < drive_position_tolerance;
-
-                    if (left_done && right_done) {
-                        motor_left.setMaxVelocity(drive_velocity_normal_rps);
-                        motor_right.setMaxVelocity(drive_velocity_normal_rps);
-
-                        cooldown_active = false;
-                        cooldown_timer.reset();
-                        cooldown_timer.start();
-
-                        robot_state = RobotState::LINE_FOLLOW;
-                    }
-
-                    break;
                 }
 
                 case RobotState::FINISH: {
@@ -843,7 +764,6 @@ int main(){
                 i = 0;
                 packages_picked = 0;
                 packages_placed = 0;
-                success = false;
                 motor_left.setVelocity(0.0f);
                 motor_right.setVelocity(0.0f);
                 cooldown_active = false;
