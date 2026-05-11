@@ -189,13 +189,13 @@ int main(){
     float velocity_15 = (magazine_motor.getMaxVelocity()*0.15f);
     float velocity_20 = (magazine_motor.getMaxVelocity()*0.2f);
     float target_rotation       = 0.0f;
-    float rotation_red          = 0.25f; // old 0.29f
-    float rotation_green        = 0.68f; // old 0.71f
-    float rotation_blue         = 0.91f; // old 0.96f
-    float rotation_yellow       = 0.04f; // old 0.04f
+    float rotation_red          = 0.265f; // old 0.29f old 0.25
+    float rotation_green        = 0.68f; // old 0.71f old 0.68f
+    float rotation_blue         = 0.93f; // old 0.96f old 0.91f
+    float rotation_yellow       = 0.015f; // old 0.04f old 0.04f;
     float positionTolerance     = 0.005f; // old 0.0005f
-    float grip_offset_picking   = 0.18f; // 0.215f; // old 0.2f
-    float grip_offset_placing   = 0.18f; // _sigrisev
+    float grip_offset_picking   = 0.24f; // 0.215f; // old 0.2f //0.18f
+    float grip_offset_placing   = 0.24f; // _sigrisev
     float color_active          = 0.0f;
     int i                       = 0;
     magazine_motor.setVelocity(0.0f);
