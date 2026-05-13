@@ -112,12 +112,12 @@ int main(){
     const int align_pivot_ms = 100;            // time to drive forward to align wheels on intersection
     const int turn_blind_ms = 400;             // time to pivot blindly off the current line (~30 deg)
     const float outer_sensor_threshold = 0.3f; // threshold for outer sensors detecting intersection
-    const float center_sensor_threshold = 0.3f; // threshold for center sensor detecting new line
+    const float center_sensor_threshold = 0.3f; //0.3f; // threshold for center sensor detecting new line
 
     // cross line detection by sensor pattern (tune on real robot)
     // 100mm line: outer sensors lit (6+ LEDs active) -> outer > threshold
     // 50mm line:  center sensors lit, outer NOT lit  -> center high, outer low
-    const float cross_line_outer_threshold = 0.45f;
+    const float cross_line_outer_threshold = 0.4f;
     const float cross_line_center_threshold = 0.6f;
     //const float cross_line_outer_threshold = 0.5f;  // outer sensors above this = 100mm line
     //const float cross_line_center_threshold = 0.7f; // center sensors above this = 50mm line
@@ -312,7 +312,7 @@ int main(){
                         float outer_val = lineFollower.getMeanFourAvgBitsOuter();
                         float center_val = lineFollower.getMeanFourAvgBitsCenter();
 
-                        if (outer_val > cross_line_outer_threshold) {
+                        if (outer_val >= cross_line_outer_threshold) {
                             // 100mm line: outer sensors strongly lit (6+ LEDs)
                             picking = true;
                             placing = false;
@@ -322,7 +322,7 @@ int main(){
                             printf("100mm line (outer=%.2f, center=%.2f), waiting %d ms\r\n",
                                    outer_val, center_val, wait_duration_ms);
                         }
-                        else if (center_val > cross_line_center_threshold && outer_val < cross_line_outer_threshold) {
+                        else if ((center_val >= cross_line_center_threshold) && (outer_val <= cross_line_outer_threshold)) {
                             // 50mm line: center sensors strongly lit, outer NOT lit
                             picking = false;
                             placing = true;
@@ -380,30 +380,30 @@ int main(){
                         case 3: // RED
                             target_rotation = rotation_red;
                             color_valid = true;
-                            if(picking){
+                            //if(picking){
                                 red_done = true;
-                            }
+                            //}
                             break;
                         case 5: // GREEN
                             target_rotation = rotation_green;
                             color_valid = true;
-                            if(picking){
+                            //if(picking){
                                 green_done = true;
-                            }
+                            //}
                             break;
                         case 7: // BLUE
                             target_rotation = rotation_blue;
                             color_valid = true;
-                            if(picking){
+                            //if(picking){
                                 blue_done = true;
-                            }
+                            //}
                             break;
                         case 4: // YELLOW
                             target_rotation = rotation_yellow;
                             color_valid = true;
-                            if(picking){
+                            //if(picking){
                                 yellow_done = true;
-                            }
+                            //}
                             break;
 
                         case 1:
@@ -590,6 +590,7 @@ int main(){
                     printf("%f ", magazine_motor.getRotation());
                     printf("%f ", target_position_absolute);
                     printf("WAIT_ARM_UP ");
+                    printf("Picking / Placing: %d / %d ", picking, placing);
                     printf("%s\n", color_string);
                     if (fabs(magazine_motor.getRotation() - target_position_absolute) < positionTolerance) {
 
@@ -606,6 +607,8 @@ int main(){
                                 packages_picked++;
                             }
                             robot_state = RobotState::CHECK_PACKAGE;
+
+                            break;
                         }
                     } else {
                         i = 0;
@@ -624,17 +627,12 @@ int main(){
 
                 case RobotState::WAIT_FOR_MAGAZINE: {
                     printf("%f ", magazine_motor.getRotation());
+                    printf("Packages picked: %d Placed: %d ",packages_picked, packages_placed);
                     printf("WAIT_FOR_MAGAZINE\n");
 
-                    if (picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
-                        picking = false;
-                        robot_state = RobotState::DRIVE_FORWARD_TUNNEL;
-                        break;
-                    }
-
-                    if (packages_placed == 4) {
-                        robot_state = RobotState::FINISH;
-                        break;
+                    if (packages_placed >= 4) {
+                            robot_state = RobotState::FINISH;
+                            break;
                     }
 
                     // while magazine is not referenced, drive forwards until reference button
@@ -643,9 +641,15 @@ int main(){
                     } else {
                         magazine_motor.setVelocity(0.0f);
                         magazine_motor.setMaxVelocity(velocity_100);
-                    
-                        robot_state = RobotState::LINE_FOLLOW;
-                        
+
+                        if (picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
+                            picking = false;
+                            robot_state = RobotState::DRIVE_FORWARD_TUNNEL;
+                            break;
+                        } else {
+                            robot_state = RobotState::LINE_FOLLOW;
+                            break;
+                        }
                     }
 
                     // Test
