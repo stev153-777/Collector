@@ -136,6 +136,7 @@ int main(){
     const float drive_velocity_normal_rps = line_follow_vel_rps;
 
     // Tunnel stuff
+    int cross_line_counter = 0;
     const float tunnel_forward_rot = 2.925f;
     const float tunnel_turn_rot = 0.5f;
 
@@ -313,6 +314,7 @@ int main(){
                         float center_val = lineFollower.getMeanFourAvgBitsCenter();
 
                         if (outer_val >= cross_line_outer_threshold) {
+                            cross_line_counter ++;
                             // 100mm line: outer sensors strongly lit (6+ LEDs)
                             picking = true;
                             placing = false;
@@ -323,6 +325,7 @@ int main(){
                                    outer_val, center_val, wait_duration_ms);
                         }
                         else if ((center_val >= cross_line_center_threshold) && (outer_val <= cross_line_outer_threshold)) {
+                            cross_line_counter ++;
                             // 50mm line: center sensors strongly lit, outer NOT lit
                             picking = false;
                             placing = true;
@@ -642,7 +645,7 @@ int main(){
                         magazine_motor.setVelocity(0.0f);
                         magazine_motor.setMaxVelocity(velocity_100);
 
-                        if (picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
+                        if (cross_line_counter == 5){ //(picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
                             picking = false;
                             robot_state = RobotState::DRIVE_FORWARD_TUNNEL;
                             break;
@@ -786,6 +789,7 @@ int main(){
                 green_done = false;
                 blue_done = false;
                 yellow_done = false;
+                cross_line_counter = 0;
 
                 // Reset fuer Sonderablauf erste gueltige Querlinie
                 first_valid_crossline_done = false;
