@@ -633,7 +633,7 @@ int main(){
                     printf("Packages picked: %d Placed: %d ",packages_picked, packages_placed);
                     printf("WAIT_FOR_MAGAZINE\n");
 
-                    if (packages_placed >= 4) {
+                    if (cross_line_counter==9){//(packages_placed >= 4) {
                             robot_state = RobotState::FINISH;
                             break;
                     }
@@ -645,7 +645,7 @@ int main(){
                         magazine_motor.setVelocity(0.0f);
                         magazine_motor.setMaxVelocity(velocity_100);
 
-                        if (cross_line_counter == 5){ //(picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
+                        if (cross_line_counter ==5 ){ //(picking && red_done && green_done && blue_done && yellow_done){ //packages_picked == 4
                             picking = false;
                             robot_state = RobotState::DRIVE_FORWARD_TUNNEL;
                             break;
